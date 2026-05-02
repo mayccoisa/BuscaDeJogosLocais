@@ -1,0 +1,299 @@
+<UserControl x:Class="BuscaDeJogosLocais.BuscaDeJogosLocaisSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:BuscaDeJogosLocais"
+             mc:Ignorable="d" 
+             d:DesignHeight="600" d:DesignWidth="800">
+    <UserControl.Resources>
+        <local:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+        
+        <!-- ESTILO PARA AGRUPAMENTO NO DATAGRID -->
+        <Style x:Key="GroupHeaderStyle" TargetType="{x:Type GroupItem}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type GroupItem}">
+                        <Expander IsExpanded="True" Background="#11FFFFFF" BorderBrush="#33FFFFFF" BorderThickness="0,0,0,1" Margin="0,0,0,5">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="📁 Origem: " FontWeight="Bold" Opacity="0.7" />
+                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="Gold" />
+                                    <TextBlock Text="{Binding ItemCount, StringFormat=' ({0} itens)'}" Opacity="0.5" Margin="5,0,0,0" />
+                                </StackPanel>
+                            </Expander.Header>
+                            <ItemsPresenter />
+                        </Expander>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+    
+    <Grid Margin="10">
+        <TabControl Background="Transparent" BorderThickness="0">
+            <!-- ABA 1: CONFIGURAÇÕES E MONITORAMENTO -->
+            <TabItem Header="Pastas Monitoradas">
+                <Grid Margin="10,15,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#11FFFFFF" CornerRadius="5" Padding="15" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="Configurações de Identificação" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" Foreground="Gold" />
+                            <CheckBox Content="Identificar o HD (ex: 'HD D:') como Característica ao importar" 
+                                      IsChecked="{Binding Settings.TagDriveAsFeature}" 
+                                      VerticalContentAlignment="Center" Margin="0,5,0,5" />
+                            <TextBlock Text="Adiciona automaticamente a letra do disco aos jogos para facilitar filtros." 
+                                       FontStyle="Italic" Opacity="0.7" Margin="25,0,0,10" FontSize="11" />
+                            <Button Content="🚀 Aplicar Tags de HD nos Jogos Já Importados" 
+                                    Command="{Binding UpdateExistingGamesDriveCommand}" 
+                                    Padding="10,5" HorizontalAlignment="Left" Margin="25,5,0,0" Cursor="Hand" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Margin="0,0,0,10">
+                        <TextBlock Text="Gerencie as pastas que o plugin deve vigiar:" FontWeight="Bold" Margin="0,0,0,5" />
+                        <Button Content="➕ Adicionar Nova Pasta" Command="{Binding AddFolderCommand}" Padding="10,5" HorizontalAlignment="Left" />
+                    </StackPanel>
+
+                    <ListBox Grid.Row="2" ItemsSource="{Binding Settings.Pastas}" BorderThickness="1" Background="#22FFFFFF" Margin="0,0,0,10">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Padding="5" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Border Grid.Row="3" Background="#11FFFFFF" Padding="10" CornerRadius="5">
+                        <TextBlock Text="{Binding PastasEstatisticas}" TextWrapping="Wrap" />
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ABA 2: DESCOBERTA E IMPORTAÇÃO -->
+            <TabItem Header="Busca e Importação">
+                <Grid Margin="10,20,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- BARRA DE FILTROS -->
+                    <Border Grid.Row="0" Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Filtros:" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0" />
+                            
+                            <ComboBox ItemsSource="{Binding OpcoesPastas}" SelectedValue="{Binding FiltroPastaSelecionada}" Width="200" VerticalAlignment="Center" />
+                            
+                            <CheckBox Content="Ocultar jogos já importados" IsChecked="{Binding FiltrarApenasNovos}" VerticalAlignment="Center" Margin="20,0,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Content="{Binding ScanButtonLabel}" Command="{Binding ScanNowCommand}" Padding="15,8" FontWeight="Bold" />
+                        <TextBlock Text="{Binding ScanHintText}" VerticalAlignment="Center" Margin="15,0,0,0" Opacity="0.7" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <DataGrid ItemsSource="{Binding JogosEncontradosView}"
+                                  AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single"
+                                  Background="#11FFFFFF" BorderThickness="1"
+                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                  CanUserResizeColumns="True" CanUserReorderColumns="True"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  ColumnWidth="SizeToCells">
+                            <DataGrid.GroupStyle>
+                                <GroupStyle ContainerStyle="{StaticResource GroupHeaderStyle}" />
+                            </DataGrid.GroupStyle>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Header="Sel." Width="60" MinWidth="60">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource TextBrush}" BorderThickness="1" CornerRadius="2"
+                                                    Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.6">
+                                                <CheckBox IsChecked="{Binding Selecionado, UpdateSourceTrigger=PropertyChanged}"
+                                                          IsEnabled="{Binding JaExiste, Converter={StaticResource InverseBooleanConverter}}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center" Margin="-1" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="Nome do Jogo" Width="400" MinWidth="300" SortMemberPath="Nome">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Nome}" VerticalAlignment="Center" Margin="5,4"
+                                                       Foreground="{DynamicResource TextBrush}" FontSize="13"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Nome}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="Status" Width="200" MinWidth="180" SortMemberPath="Status">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Margin="5,4"
+                                                       Foreground="{DynamicResource TextBrush}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="Pasta Raiz" Width="600" MinWidth="400" SortMemberPath="PastaRaiz">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding PastaRaiz}" VerticalAlignment="Center" Margin="5,2"
+                                                       Foreground="{DynamicResource TextBrush}" Opacity="0.8"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding PastaRaiz}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </ScrollViewer>
+
+                    <Button Grid.Row="3" Content="🛒 IMPORTAR SELECIONADOS" Command="{Binding ImportSelectedCommand}" Margin="0,10,0,0" Padding="20,10" FontWeight="Bold" Background="#2200FF00" HorizontalAlignment="Right" />
+                </Grid>
+            </TabItem>
+
+            <!-- ABA 3: HISTÓRICO -->
+            <TabItem Header="Histórico de Importação">
+                <Grid Margin="10,20,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- BARRA DE FILTROS HISTÓRICO -->
+                    <Border Grid.Row="0" Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Ver Origem:" VerticalAlignment="Center" FontWeight="Bold" Margin="0,0,10,0" />
+                            <ComboBox ItemsSource="{Binding OpcoesPastas}" SelectedValue="{Binding FiltroPastaSelecionada}" Width="200" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding HistoricoView}" 
+                              AutoGenerateColumns="False" IsReadOnly="True" Background="#11FFFFFF"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              CanUserResizeColumns="True" CanUserReorderColumns="True">
+                        <DataGrid.GroupStyle>
+                            <GroupStyle ContainerStyle="{StaticResource GroupHeaderStyle}" />
+                        </DataGrid.GroupStyle>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Data" Width="140">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DataImportacao}" Foreground="{DynamicResource TextBrush}" Margin="5,2" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Jogo" Width="*" SortMemberPath="NomeJogo">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding NomeJogo}" Foreground="{DynamicResource TextBrush}" FontWeight="Bold" Margin="5,2" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Local de Origem" Width="2*" SortMemberPath="Origem">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Origem}" Foreground="{DynamicResource TextBrush}" Opacity="0.8" Margin="5,2" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="2" Content="Limpar Histórico" Command="{Binding ClearHistoryCommand}" Margin="0,10,0,0" HorizontalAlignment="Right" />
+                </Grid>
+            </TabItem>
+            <!-- ABA 4: REPARAR DESINSTALADOS -->
+            <TabItem Header="Reparar Desinstalados">
+                <Grid Margin="10,20,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
+                        <TextBlock Text="Localize jogos que mudaram de pasta e foram marcados como desinstalados. O plugin tentará encontrar o novo local usando as Pastas Monitoradas." TextWrapping="Wrap" Opacity="0.8" />
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Content="🔍 PROCURAR CAMINHOS" Command="{Binding SearchLostGamesCommand}" Padding="15,8" FontWeight="Bold" />
+                        <TextBlock Text="Verifica jogos não instalados e procura seus executáveis." VerticalAlignment="Center" Margin="15,0,0,0" Opacity="0.7" />
+                    </StackPanel>
+
+                    <DataGrid Grid.Row="2" ItemsSource="{Binding JogosParaRelinkarView}" 
+                              AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single" 
+                              Background="#11FFFFFF" BorderThickness="1"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              CanUserResizeColumns="True" CanUserReorderColumns="True">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Sel." Width="50">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{DynamicResource TextBrush}" BorderThickness="1" CornerRadius="2" 
+                                                Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.6">
+                                            <CheckBox IsChecked="{Binding Selecionado, UpdateSourceTrigger=PropertyChanged}" 
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="-1" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Nome do Jogo" Width="2*" MinWidth="150" SortMemberPath="Nome">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Nome}" VerticalAlignment="Center" Margin="5,4" 
+                                                   Foreground="{DynamicResource TextBrush}" FontWeight="Bold" FontSize="13" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Status" Width="130" SortMemberPath="Status">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Margin="5,4"
+                                                   Foreground="{DynamicResource TextBrush}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Caminho Antigo" Width="2*" MinWidth="200" SortMemberPath="CaminhoAntigoExe">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding CaminhoAntigoExe}" VerticalAlignment="Center" Margin="5,2"
+                                                   Foreground="{DynamicResource TextBrush}" Opacity="0.6" ToolTip="{Binding CaminhoAntigoExe}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            
+                            <DataGridTemplateColumn Header="Novo Caminho Encontrado" Width="3*" MinWidth="250" SortMemberPath="NovoCaminhoExe">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding NovoCaminhoExe}" VerticalAlignment="Center" Margin="5,2"
+                                                   Foreground="LightGreen" Opacity="0.9" ToolTip="{Binding NovoCaminhoExe}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="3" Content="🔧 RELINKAR SELECIONADOS" Command="{Binding RelinkSelectedCommand}" Margin="0,10,0,0" Padding="20,10" FontWeight="Bold" Background="#22FF8800" HorizontalAlignment="Right" />
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

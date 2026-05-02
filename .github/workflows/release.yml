@@ -1,0 +1,45 @@
+name: Deploy Extension (.pext)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-pack:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1.3.1
+
+      - name: Restore NuGet Packages
+        run: nuget restore BuscaDeJogosLocais.sln
+
+      - name: Build Extension
+        run: msbuild BuscaDeJogosLocais.sln -p:Configuration=Release
+
+      - name: Download Playnite Portable (for Toolbox.exe)
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/JosefNemec/Playnite/releases/download/10.35/Playnite1035.zip" -OutFile "playnite.zip"
+          Expand-Archive "playnite.zip" -DestinationPath "playnite"
+
+      - name: Pack BuscaDeJogosLocais (.pext)
+        run: |
+          .\playnite\Toolbox.exe pack "bin\Release" ".\"
+
+      - name: List Generated Files (Diagnostic)
+        run: ls *.pext
+
+      - name: Publish Release & Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.pext"
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
