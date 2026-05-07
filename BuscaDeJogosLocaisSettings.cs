@@ -116,16 +116,36 @@ namespace BuscaDeJogosLocais
         public bool Selecionado { get { return selecionado; } set { SetValue(ref selecionado, value); } }
     }
 
+    public class ExcludedEntry : ObservableObject
+    {
+        public string CaminhoExe { get; set; }
+        public string NomeJogo { get; set; }
+        public string PastaMonitoradaPai { get; set; }
+        public string DataExclusao { get; set; }
+    }
+
     public class BuscaDeJogosLocaisSettings : ObservableObject
     {
         private ObservableCollection<string> pastas = new ObservableCollection<string>();
         public ObservableCollection<string> Pastas { get { return pastas; } set { SetValue(ref pastas, value); } }
-        
+
         private ObservableCollection<ImportLogEntry> historicoImportacoes = new ObservableCollection<ImportLogEntry>();
         public ObservableCollection<ImportLogEntry> HistoricoImportacoes { get { return historicoImportacoes; } set { SetValue(ref historicoImportacoes, value); } }
 
         private bool tagDriveAsFeature = false;
         public bool TagDriveAsFeature { get { return tagDriveAsFeature; } set { SetValue(ref tagDriveAsFeature, value); } }
+
+        private bool escanearAutomaticamente = false;
+        public bool EscanearAutomaticamente { get { return escanearAutomaticamente; } set { SetValue(ref escanearAutomaticamente, value); } }
+
+        private DateTime? dataUltimoScanAutomatico = null;
+        public DateTime? DataUltimoScanAutomatico { get { return dataUltimoScanAutomatico; } set { SetValue(ref dataUltimoScanAutomatico, value); } }
+
+        private int intervaloScanDias = 7;
+        public int IntervaloScanDias { get { return intervaloScanDias; } set { SetValue(ref intervaloScanDias, value); } }
+
+        private ObservableCollection<ExcludedEntry> caminhosIgnorados = new ObservableCollection<ExcludedEntry>();
+        public ObservableCollection<ExcludedEntry> CaminhosIgnorados { get { return caminhosIgnorados; } set { SetValue(ref caminhosIgnorados, value); } }
     }
 
     public class BuscaDeJogosLocaisSettingsViewModel : ObservableObject, ISettings
@@ -204,6 +224,19 @@ namespace BuscaDeJogosLocais
         public RelayCommand<object> SearchLostGamesCommand { get; private set; }
         public RelayCommand<object> RelinkSelectedCommand { get; private set; }
 
+        public ICollectionView ExcludedView { get; private set; }
+        public RelayCommand<object> RemoveExcludedCommand { get; private set; }
+
+        public string UltimoScanTexto
+        {
+            get
+            {
+                if (Settings.DataUltimoScanAutomatico.HasValue)
+                    return "Último scan automático: " + Settings.DataUltimoScanAutomatico.Value.ToString("dd/MM/yyyy HH:mm");
+                return "Nenhum scan automático realizado ainda.";
+            }
+        }
+
         public BuscaDeJogosLocaisSettingsViewModel(BuscaDeJogosLocais plugin)
         {
             JogosEncontrados = new ObservableCollection<ScannedGame>();
@@ -221,6 +254,8 @@ namespace BuscaDeJogosLocais
                 Settings = new BuscaDeJogosLocaisSettings();
             }
 
+            if (Settings.CaminhosIgnorados == null) Settings.CaminhosIgnorados = new ObservableCollection<ExcludedEntry>();
+
             // Inicializar Views de Coleção
             JogosEncontradosView = CollectionViewSource.GetDefaultView(JogosEncontrados);
             JogosEncontradosView.Filter = FilterJogosDescobertos;
@@ -231,6 +266,14 @@ namespace BuscaDeJogosLocais
             HistoricoView.GroupDescriptions.Add(new PropertyGroupDescription("PastaMonitoradaPai"));
 
             JogosParaRelinkarView = CollectionViewSource.GetDefaultView(JogosParaRelinkar);
+
+            ExcludedView = CollectionViewSource.GetDefaultView(Settings.CaminhosIgnorados);
+
+            RemoveExcludedCommand = new RelayCommand<object>((param) =>
+            {
+                var entry = param as ExcludedEntry;
+                if (entry != null) Settings.CaminhosIgnorados.Remove(entry);
+            });
 
             AddFolderCommand = new RelayCommand<object>((_) =>
             {
