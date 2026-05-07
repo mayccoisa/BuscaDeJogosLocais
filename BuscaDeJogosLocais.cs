@@ -32,6 +32,7 @@ namespace BuscaDeJogosLocais
         public override void OnApplicationStarted(OnApplicationStartedEventArgs args)
         {
             UpdateWatchers();
+            VerificarScanAutomatico();
         }
 
         public void UpdateWatchers()
@@ -80,6 +81,7 @@ namespace BuscaDeJogosLocais
                                 if (progressArgs.CancelToken.IsCancellationRequested) break;
                                 
                                 if (IsExplosiveFile(file)) continue;
+                                if (IsExcluded(file)) continue;
 
                                 string monitoredPai;
                                 string gameRoot = GetGameRootInternal(file, monitoredPaths, out monitoredPai);
@@ -124,6 +126,117 @@ namespace BuscaDeJogosLocais
             if (!p.EndsWith(".exe")) return true;
             string[] blacklist = { "unins", "setup", "crash", "helper", "update", "redist", "bugreport", "sendreport", "steamerrorreporter", "dxwebsetup", "dotnet", "vcredist", "tool", "media", "storybook" };
             return blacklist.Any(b => p.Contains(b));
+        }
+
+        private bool IsExcluded(string caminhoExe)
+        {
+            if (settings == null || settings.Settings == null) return false;
+            var ignorados = settings.Settings.CaminhosIgnorados;
+            if (ignorados == null) return false;
+            return ignorados.Any(e => e.CaminhoExe.Equals(caminhoExe, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public void AdicionarExcluido(ScannedGame jogo)
+        {
+            if (settings.Settings.CaminhosIgnorados.Any(e => e.CaminhoExe.Equals(jogo.CaminhoExe, StringComparison.OrdinalIgnoreCase)))
+                return;
+
+            settings.Settings.CaminhosIgnorados.Add(new ExcludedEntry
+            {
+                CaminhoExe = jogo.CaminhoExe,
+                NomeJogo = jogo.Nome,
+                PastaMonitoradaPai = jogo.PastaMonitoradaPai,
+                DataExclusao = DateTime.Now.ToString("dd/MM/yyyy HH:mm")
+            });
+            SavePluginSettings(settings.Settings);
+        }
+
+        private void AbrirScanRapido()
+        {
+            if (settings.Settings.Pastas == null || settings.Settings.Pastas.Count == 0)
+            {
+                PlayniteApi.Dialogs.ShowMessage("Nenhuma pasta monitorada configurada. Acesse as configurações da extensão para adicionar pastas.", "Busca de Jogos");
+                return;
+            }
+
+            var resultados = new ObservableCollection<ScannedGame>();
+            ExecuteManualScan(resultados);
+
+            if (resultados.Count == 0)
+            {
+                PlayniteApi.Dialogs.ShowMessage("Nenhum jogo encontrado nas pastas configuradas.", "Busca de Jogos");
+                return;
+            }
+
+            var window = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+            {
+                ShowMaximizeButton = true,
+                ShowMinimizeButton = false
+            });
+            window.Title = string.Format("Jogos Encontrados ({0})", resultados.Count);
+            window.Width = 900;
+            window.Height = 600;
+            window.Content = new ScanResultWindow(
+                resultados,
+                importar: (selecionados) =>
+                {
+                    foreach (var j in selecionados)
+                    {
+                        if (ImportarJogoManual(j))
+                            j.JaExiste = true;
+                    }
+                },
+                ignorar: (jogo) => AdicionarExcluido(jogo)
+            );
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            window.ShowDialog();
+        }
+
+        private void VerificarScanAutomatico()
+        {
+            if (!settings.Settings.EscanearAutomaticamente) return;
+
+            var ultimo = settings.Settings.DataUltimoScanAutomatico;
+            int intervalo = settings.Settings.IntervaloScanDias;
+            if (ultimo != null && (DateTime.Now - ultimo.Value).TotalDays < intervalo) return;
+
+            if (settings.Settings.Pastas == null || settings.Settings.Pastas.Count == 0) return;
+
+            var resultados = new ObservableCollection<ScannedGame>();
+            ExecuteManualScan(resultados);
+
+            var novos = resultados.Where(g => !g.JaExiste).ToList();
+
+            settings.Settings.DataUltimoScanAutomatico = DateTime.Now;
+            SavePluginSettings(settings.Settings);
+
+            if (novos.Count == 0) return;
+
+            PlayniteApi.MainView.UIDispatcher.Invoke(() =>
+            {
+                var window = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+                {
+                    ShowMaximizeButton = true,
+                    ShowMinimizeButton = false
+                });
+                window.Title = string.Format("Scan Automático: {0} novo(s) jogo(s) encontrado(s)", novos.Count);
+                window.Width = 900;
+                window.Height = 600;
+                window.Content = new ScanResultWindow(
+                    new ObservableCollection<ScannedGame>(novos),
+                    importar: (selecionados) =>
+                    {
+                        foreach (var j in selecionados)
+                        {
+                            if (ImportarJogoManual(j))
+                                j.JaExiste = true;
+                        }
+                    },
+                    ignorar: (jogo) => AdicionarExcluido(jogo)
+                );
+                window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                window.ShowDialog();
+            });
         }
 
         private IEnumerable<string> SafeEnumerateFiles(string path, string searchPattern, System.Threading.CancellationToken cancelToken)
@@ -293,12 +406,16 @@ namespace BuscaDeJogosLocais
         {
             yield return new MainMenuItem
             {
+                Description = "Buscar Novos Jogos",
+                MenuSection = "@Busca de Jogos Locais",
+                Action = (mainMenuItemArgs) => AbrirScanRapido()
+            };
+
+            yield return new MainMenuItem
+            {
                 Description = "Verificar Integridade da Biblioteca",
                 MenuSection = "@Busca de Jogos Locais",
-                Action = (mainMenuItemArgs) =>
-                {
-                    CheckLibraryIntegrity();
-                }
+                Action = (mainMenuItemArgs) => CheckLibraryIntegrity()
             };
         }
 

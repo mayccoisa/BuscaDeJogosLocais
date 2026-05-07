@@ -38,6 +38,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
@@ -56,12 +57,28 @@
                         </StackPanel>
                     </Border>
 
-                    <StackPanel Grid.Row="1" Margin="0,0,0,10">
+                    <!-- SCAN AUTOMÁTICO -->
+                    <Border Grid.Row="1" Background="#11FFFFFF" CornerRadius="5" Padding="15" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="Scan Automático" FontSize="16" FontWeight="Bold" Foreground="Gold" Margin="0,0,0,10" />
+                            <CheckBox Content="Escanear automaticamente ao iniciar o Playnite"
+                                      IsChecked="{Binding Settings.EscanearAutomaticamente}"
+                                      VerticalContentAlignment="Center" Margin="0,5,0,5" />
+                            <StackPanel Orientation="Horizontal" Margin="25,5,0,5"
+                                        IsEnabled="{Binding Settings.EscanearAutomaticamente}">
+                                <TextBlock Text="Intervalo entre scans (dias):" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox Width="50" Text="{Binding Settings.IntervaloScanDias, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding UltimoScanTexto}" FontStyle="Italic" Opacity="0.7" Margin="25,3,0,0" FontSize="11" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Grid.Row="2" Margin="0,0,0,10">
                         <TextBlock Text="Gerencie as pastas que o plugin deve vigiar:" FontWeight="Bold" Margin="0,0,0,5" />
                         <Button Content="➕ Adicionar Nova Pasta" Command="{Binding AddFolderCommand}" Padding="10,5" HorizontalAlignment="Left" />
                     </StackPanel>
 
-                    <ListBox Grid.Row="2" ItemsSource="{Binding Settings.Pastas}" BorderThickness="1" Background="#22FFFFFF" Margin="0,0,0,10">
+                    <ListBox Grid.Row="3" ItemsSource="{Binding Settings.Pastas}" BorderThickness="1" Background="#22FFFFFF" Margin="0,0,0,10">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding}" Padding="5" />
@@ -69,7 +86,7 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <Border Grid.Row="3" Background="#11FFFFFF" Padding="10" CornerRadius="5">
+                    <Border Grid.Row="4" Background="#11FFFFFF" Padding="10" CornerRadius="5">
                         <TextBlock Text="{Binding PastasEstatisticas}" TextWrapping="Wrap" />
                     </Border>
                 </Grid>
@@ -292,6 +309,57 @@
                     </DataGrid>
 
                     <Button Grid.Row="3" Content="🔧 RELINKAR SELECIONADOS" Command="{Binding RelinkSelectedCommand}" Margin="0,10,0,0" Padding="20,10" FontWeight="Bold" Background="#22FF8800" HorizontalAlignment="Right" />
+                </Grid>
+            </TabItem>
+            <!-- ABA 5: EXCLUÍDOS -->
+            <TabItem Header="Excluídos">
+                <Grid Margin="10,15,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
+                        <TextBlock Text="Jogos ignorados nas buscas. Selecione um item e clique em 'Remover da Lista' para que volte a aparecer nos resultados futuros."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                    </Border>
+
+                    <DataGrid x:Name="ExcludedGrid" Grid.Row="1"
+                              ItemsSource="{Binding ExcludedView}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              IsReadOnly="True"
+                              Background="#11FFFFFF"
+                              BorderThickness="1"
+                              HorizontalAlignment="Stretch"
+                              CanUserResizeColumns="True"
+                              CanUserReorderColumns="True"
+                              SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Jogo" Binding="{Binding NomeJogo}" Width="*" />
+                            <DataGridTextColumn Header="Pasta de Origem" Binding="{Binding PastaMonitoradaPai}" Width="*" />
+                            <DataGridTextColumn Header="Excluído em" Binding="{Binding DataExclusao}" Width="140" />
+                            <DataGridTextColumn Header="Caminho do Exe" Binding="{Binding CaminhoExe}" Width="2*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Opacity" Value="0.6" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                        <Setter Property="ToolTip" Value="{Binding CaminhoExe}" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="2"
+                            Content="🔁 Remover Selecionado da Lista de Excluídos"
+                            Command="{Binding RemoveExcludedCommand}"
+                            CommandParameter="{Binding SelectedItem, ElementName=ExcludedGrid}"
+                            Padding="10,5"
+                            HorizontalAlignment="Left"
+                            Margin="0,10,0,0"
+                            Cursor="Hand" />
                 </Grid>
             </TabItem>
         </TabControl>
