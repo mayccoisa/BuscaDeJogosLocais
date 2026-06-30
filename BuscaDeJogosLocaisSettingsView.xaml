@@ -51,9 +51,15 @@
                                       VerticalContentAlignment="Center" Margin="0,5,0,5" />
                             <TextBlock Text="Adiciona automaticamente a letra do disco aos jogos para facilitar filtros." 
                                        FontStyle="Italic" Opacity="0.7" Margin="25,0,0,10" FontSize="11" />
-                            <Button Content="🚀 Aplicar Tags de HD nos Jogos Já Importados" 
-                                    Command="{Binding UpdateExistingGamesDriveCommand}" 
+                            <Button Content="🚀 Aplicar Tags de HD nos Jogos Já Importados"
+                                    Command="{Binding UpdateExistingGamesDriveCommand}"
                                     Padding="10,5" HorizontalAlignment="Left" Margin="25,5,0,0" Cursor="Hand" />
+
+                            <TextBlock Text="Marca os jogos como Fonte 'Local' para exibição e filtros nativos do Playnite."
+                                       FontStyle="Italic" Opacity="0.7" Margin="25,12,0,5" FontSize="11" />
+                            <Button Content="📍 Marcar Jogos Já Importados como Fonte 'Local'"
+                                    Command="{Binding ApplyLocalSourceToExistingCommand}"
+                                    Padding="10,5" HorizontalAlignment="Left" Margin="25,0,0,0" Cursor="Hand" />
                         </StackPanel>
                     </Border>
 
@@ -244,12 +250,12 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0" Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
-                        <TextBlock Text="Localize jogos que mudaram de pasta e foram marcados como desinstalados. O plugin tentará encontrar o novo local usando as Pastas Monitoradas." TextWrapping="Wrap" Opacity="0.8" />
+                        <TextBlock Text="Localize jogos que mudaram de pasta ou cujo executável sumiu. O plugin tentará encontrar o novo local usando as Pastas Monitoradas. Jogos que não forem encontrados em nenhuma pasta podem ser marcados como desinstalados." TextWrapping="Wrap" Opacity="0.8" />
                     </Border>
 
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
                         <Button Content="🔍 PROCURAR CAMINHOS" Command="{Binding SearchLostGamesCommand}" Padding="15,8" FontWeight="Bold" />
-                        <TextBlock Text="Verifica jogos não instalados e procura seus executáveis." VerticalAlignment="Center" Margin="15,0,0,0" Opacity="0.7" />
+                        <TextBlock Text="Verifica jogos não instalados (ou com executável ausente) e procura seus executáveis." VerticalAlignment="Center" Margin="15,0,0,0" Opacity="0.7" />
                     </StackPanel>
 
                     <DataGrid Grid.Row="2" ItemsSource="{Binding JogosParaRelinkarView}" 
@@ -308,7 +314,10 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Button Grid.Row="3" Content="🔧 RELINKAR SELECIONADOS" Command="{Binding RelinkSelectedCommand}" Margin="0,10,0,0" Padding="20,10" FontWeight="Bold" Background="#22FF8800" HorizontalAlignment="Right" />
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                        <Button Content="🚫 MARCAR COMO DESINSTALADOS" Command="{Binding MarkNotFoundAsUninstalledCommand}" Padding="15,10" FontWeight="Bold" Background="#22FF0000" Margin="0,0,10,0" />
+                        <Button Content="🔧 RELINKAR SELECIONADOS" Command="{Binding RelinkSelectedCommand}" Padding="20,10" FontWeight="Bold" Background="#22FF8800" />
+                    </StackPanel>
                 </Grid>
             </TabItem>
             <!-- ABA 5: EXCLUÍDOS -->
@@ -360,6 +369,56 @@
                             HorizontalAlignment="Left"
                             Margin="0,10,0,0"
                             Cursor="Hand" />
+                </Grid>
+            </TabItem>
+            <!-- ABA 6: DESINSTALADOS -->
+            <TabItem Header="Desinstalados">
+                <Grid Margin="10,15,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
+                        <TextBlock Text="Histórico de jogos marcados como desinstalados pela extensão. Clique em 'Reinstalar' para marcar o jogo como instalado novamente. Se a pasta do jogo mudou, use a aba 'Reparar Desinstalados' para reapontar o caminho."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                    </Border>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding HistoricoDesinstalacoesView}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                              Background="#11FFFFFF" BorderThickness="1"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              CanUserResizeColumns="True" CanUserReorderColumns="True"
+                              SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Data" Binding="{Binding DataDesinstalacao}" Width="150" />
+                            <DataGridTextColumn Header="Jogo" Binding="{Binding NomeJogo}" Width="*" />
+                            <DataGridTextColumn Header="Local de Origem" Binding="{Binding Origem}" Width="2*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Opacity" Value="0.6" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                        <Setter Property="ToolTip" Value="{Binding Origem}" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTemplateColumn Header="Ação" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="↩️ Reinstalar"
+                                                Command="{Binding DataContext.ReinstalarCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}"
+                                                Padding="6,2" Margin="2" Cursor="Hand" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="2" Content="Limpar Histórico de Desinstalações"
+                            Command="{Binding ClearUninstallHistoryCommand}"
+                            Margin="0,10,0,0" HorizontalAlignment="Right" />
                 </Grid>
             </TabItem>
         </TabControl>

@@ -12,12 +12,12 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Os seguintes jogos possuem arquivos ou pastas ausentes:" Margin="0,0,0,10" FontWeight="Bold" Foreground="White" />
+        <TextBlock Text="Os seguintes jogos possuem arquivos ou pastas ausentes. Selecione os itens e escolha uma ação:" Margin="0,0,0,10" FontWeight="Bold" Foreground="White" TextWrapping="Wrap" />
 
         <ListView Grid.Row="1" ItemsSource="{Binding Results}" MaxHeight="600" Width="700" Background="#222" Foreground="White">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Header="Remover?" Width="70">
+                    <GridViewColumn Header="Sel." Width="50">
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
                                 <CheckBox IsChecked="{Binding Selected}" HorizontalAlignment="Center" />
@@ -32,7 +32,8 @@
         </ListView>
 
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
-            <Button Content="Executar Ação" Click="Confirm_Click" Width="150" Height="30" Margin="0,0,10,0" />
+            <Button Content="🚫 Marcar como Desinstalado" Click="MarkUninstalled_Click" Width="210" Height="30" Margin="0,0,10,0" />
+            <Button Content="🗑️ Remover da Biblioteca" Click="Remove_Click" Width="190" Height="30" Margin="0,0,10,0" />
             <Button Content="Fechar" Click="Cancel_Click" Width="100" Height="30" />
         </StackPanel>
     </Grid>

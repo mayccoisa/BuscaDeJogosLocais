@@ -122,10 +122,7 @@ namespace BuscaDeJogosLocais
 
         private bool IsExplosiveFile(string path)
         {
-            string p = path.ToLowerInvariant();
-            if (!p.EndsWith(".exe")) return true;
-            string[] blacklist = { "unins", "setup", "crash", "helper", "update", "redist", "bugreport", "sendreport", "steamerrorreporter", "dxwebsetup", "dotnet", "vcredist", "tool", "media", "storybook" };
-            return blacklist.Any(b => p.Contains(b));
+            return LocalGameUtils.IsExplosiveFile(path);
         }
 
         private bool IsExcluded(string caminhoExe)
@@ -133,7 +130,7 @@ namespace BuscaDeJogosLocais
             if (settings == null || settings.Settings == null) return false;
             var ignorados = settings.Settings.CaminhosIgnorados;
             if (ignorados == null) return false;
-            return ignorados.Any(e => e.CaminhoExe.Equals(caminhoExe, StringComparison.OrdinalIgnoreCase));
+            return LocalGameUtils.IsPathExcluded(caminhoExe, ignorados.Select(e => e.CaminhoExe));
         }
 
         public void AdicionarExcluido(ScannedGame jogo)
@@ -296,25 +293,12 @@ namespace BuscaDeJogosLocais
 
         public string NormalizePath(string path)
         {
-            if (string.IsNullOrEmpty(path)) return string.Empty;
-            return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant();
+            return LocalGameUtils.NormalizePath(path);
         }
 
         private string GetGameRootInternal(string filePath, List<string> monitoredPaths, out string monitoredPai)
         {
-            monitoredPai = "Desconhecida";
-            DirectoryInfo current = new DirectoryInfo(Path.GetDirectoryName(filePath));
-            while (current != null && current.Parent != null)
-            {
-                string currentParentPath = NormalizePath(current.Parent.FullName);
-                if (monitoredPaths.Contains(currentParentPath))
-                {
-                    monitoredPai = current.Parent.FullName;
-                    return current.FullName;
-                }
-                current = current.Parent;
-            }
-            return null;
+            return LocalGameUtils.GetGameRoot(filePath, monitoredPaths, out monitoredPai);
         }
 
         public bool ImportarJogoManual(ScannedGame scanned)
@@ -340,6 +324,8 @@ namespace BuscaDeJogosLocais
             {
                 ApplyDriveTag(game);
             }
+
+            ApplyLocalSource(game);
 
             PlayniteApi.Database.Games.Add(game);
             
@@ -379,6 +365,52 @@ namespace BuscaDeJogosLocais
                     };
                 }
             }
+        }
+
+        public const string NomeFonteLocal = "Local";
+
+        // Marca o jogo com a Fonte (Source) "Local" para exibição e filtros nativos do Playnite.
+        public bool ApplyLocalSource(Game game)
+        {
+            try
+            {
+                var fonte = PlayniteApi.Database.Sources.Add(NomeFonteLocal);
+                if (fonte != null && game.SourceId != fonte.Id)
+                {
+                    game.SourceId = fonte.Id;
+                    return true;
+                }
+            }
+            catch (Exception) { }
+            return false;
+        }
+
+        // Marca um jogo como desinstalado (mantém na biblioteca, igual ao comportamento da Steam).
+        public bool MarcarComoDesinstalado(Guid gameId)
+        {
+            var game = PlayniteApi.Database.Games.Get(gameId);
+            if (game == null) return false;
+            if (!game.IsInstalled) return false;
+            game.IsInstalled = false;
+            PlayniteApi.Database.Games.Update(game);
+
+            try
+            {
+                if (settings.Settings.HistoricoDesinstalacoes == null)
+                    settings.Settings.HistoricoDesinstalacoes = new ObservableCollection<UninstallLogEntry>();
+
+                settings.Settings.HistoricoDesinstalacoes.Add(new UninstallLogEntry
+                {
+                    GameId = game.Id,
+                    DataDesinstalacao = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"),
+                    NomeJogo = game.Name,
+                    Origem = game.InstallDirectory
+                });
+                SavePluginSettings(settings.Settings);
+            }
+            catch (Exception) { }
+
+            return true;
         }
 
         public bool ApplyDriveTag(Game game)
@@ -484,25 +516,41 @@ namespace BuscaDeJogosLocais
             });
 
             window.Title = "Integridade da Biblioteca - Itens Ausentes";
-            window.Content = new IntegrityResultView(results, (selectedItems) =>
-            {
-                if (selectedItems.Count > 0)
+            window.Content = new IntegrityResultView(
+                results,
+                onRemove: (selectedItems) =>
                 {
-                    if (PlayniteApi.Dialogs.ShowMessage(string.Format("Tem certeza que deseja remover {0} jogos da biblioteca?", selectedItems.Count), "Confirmar Remoção", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+                    if (selectedItems.Count == 0)
+                    {
+                        PlayniteApi.Dialogs.ShowMessage("Nenhum item selecionado.", "Aviso");
+                        return;
+                    }
+                    if (PlayniteApi.Dialogs.ShowMessage(string.Format("Tem certeza que deseja remover {0} jogo(s) da biblioteca?", selectedItems.Count), "Confirmar Remoção", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
                     {
                         foreach (var item in selectedItems)
                         {
                             PlayniteApi.Database.Games.Remove(item.GameId);
                         }
-                        PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogos removidos.", selectedItems.Count), "Sucesso");
+                        PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) removido(s).", selectedItems.Count), "Sucesso");
                         window.Close();
                     }
-                }
-                else
+                },
+                onMarkUninstalled: (selectedItems) =>
                 {
+                    if (selectedItems.Count == 0)
+                    {
+                        PlayniteApi.Dialogs.ShowMessage("Nenhum item selecionado.", "Aviso");
+                        return;
+                    }
+                    int marcados = 0;
+                    foreach (var item in selectedItems)
+                    {
+                        if (MarcarComoDesinstalado(item.GameId)) marcados++;
+                    }
+                    PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) marcado(s) como desinstalado(s).", marcados), "Sucesso");
                     window.Close();
-                }
-            });
+                },
+                onClose: () => window.Close());
 
             window.SizeToContent = SizeToContent.WidthAndHeight;
             window.WindowStartupLocation = WindowStartupLocation.CenterScreen;

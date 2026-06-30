@@ -4,7 +4,7 @@
 # and copies it to the Playnite extensions folder.
 
 $extensionId       = "186d9374-4173-420d-b17a-e2ace45bb317"
-$playniteExtensions = "C:\Users\mayco\Downloads\Playnite\Extensions\$extensionId"
+$playniteExtensions = "D:\Playnite\Extensions\$extensionId"
 $msbuildPath       = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe"
 $projectPath       = ".\BuscaDeJogosLocais.Local.csproj"
 $outputPath        = ".\bin\LocalRelease"

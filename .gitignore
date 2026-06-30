@@ -1,6 +1,7 @@
 bin/
 obj/
 obj_local/
+tests/bin/
 *.user
 *.suo
 .vs/

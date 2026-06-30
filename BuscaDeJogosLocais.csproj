@@ -45,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BuscaDeJogosLocais.cs" />
+    <Compile Include="LocalGameUtils.cs" />
     <Compile Include="BuscaDeJogosLocaisSettings.cs" />
     <Compile Include="BuscaDeJogosLocaisSettingsView.xaml.cs">
       <DependentUpon>BuscaDeJogosLocaisSettingsView.xaml</DependentUpon>

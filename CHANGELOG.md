@@ -6,6 +6,21 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.2.0] - 2026-06-30
+
+### Adicionado
+- **Marcar jogos como desinstalados**: igual ao comportamento das bibliotecas integradas (ex: Steam), agora é possível marcar um jogo como desinstalado sem removê-lo da biblioteca. Disponível em dois lugares:
+  - Na janela de **Verificar Integridade da Biblioteca**, pelo botão "🚫 Marcar como Desinstalado".
+  - Na aba **Relink** das configurações, pelo botão "🚫 MARCAR COMO DESINSTALADOS", que age apenas nos jogos com status "Não Encontrado" — ou seja, depois que o plugin confirmou que o jogo não está em nenhuma das pastas monitoradas.
+- **Botão para marcar jogos já importados como Fonte "Local"** (configurações), aplicando a nova marcação retroativamente à biblioteca existente.
+- **Histórico de desinstalações**: nova aba **"Desinstalados"** nas configurações, que registra todos os jogos marcados como desinstalados pela extensão (data, nome e pasta de origem). Cada item tem um botão **"Reinstalar"** para marcar o jogo como instalado novamente, e há a opção de limpar o histórico.
+
+### Alterado
+- Jogos importados agora recebem a **Fonte "Local"** (campo Source nativo do Playnite), em vez de serem identificados apenas pela biblioteca da extensão. Isso melhora a exibição e permite filtrar os jogos locais pelos filtros nativos do Playnite.
+- A busca de jogos perdidos (aba Relink) agora também considera jogos **instalados cujo executável sumiu**, não apenas os já marcados como desinstalados.
+
+---
+
 ## [0.1.2] - 2026-05-07
 
 ### Adicionado

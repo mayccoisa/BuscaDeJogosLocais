@@ -64,6 +64,14 @@ namespace BuscaDeJogosLocais
         public string PastaMonitoradaPai { get; set; } // Adicionado para filtro
     }
 
+    public class UninstallLogEntry : ObservableObject
+    {
+        public Guid GameId { get; set; }
+        public string DataDesinstalacao { get; set; }
+        public string NomeJogo { get; set; }
+        public string Origem { get; set; } // Pasta de instalação no momento da desinstalação
+    }
+
     public class ScannedGame : ObservableObject
     {
         private bool selecionado;
@@ -132,6 +140,9 @@ namespace BuscaDeJogosLocais
         private ObservableCollection<ImportLogEntry> historicoImportacoes = new ObservableCollection<ImportLogEntry>();
         public ObservableCollection<ImportLogEntry> HistoricoImportacoes { get { return historicoImportacoes; } set { SetValue(ref historicoImportacoes, value); } }
 
+        private ObservableCollection<UninstallLogEntry> historicoDesinstalacoes = new ObservableCollection<UninstallLogEntry>();
+        public ObservableCollection<UninstallLogEntry> HistoricoDesinstalacoes { get { return historicoDesinstalacoes; } set { SetValue(ref historicoDesinstalacoes, value); } }
+
         private bool tagDriveAsFeature = false;
         public bool TagDriveAsFeature { get { return tagDriveAsFeature; } set { SetValue(ref tagDriveAsFeature, value); } }
 
@@ -160,6 +171,10 @@ namespace BuscaDeJogosLocais
         public ICollectionView JogosEncontradosView { get; private set; }
 
         public ICollectionView HistoricoView { get; private set; }
+
+        public ICollectionView HistoricoDesinstalacoesView { get; private set; }
+        public RelayCommand<object> ReinstalarCommand { get; private set; }
+        public RelayCommand<object> ClearUninstallHistoryCommand { get; private set; }
 
         public ObservableCollection<RelinkGameItem> JogosParaRelinkar { get; private set; }
         public ICollectionView JogosParaRelinkarView { get; private set; }
@@ -223,6 +238,8 @@ namespace BuscaDeJogosLocais
         
         public RelayCommand<object> SearchLostGamesCommand { get; private set; }
         public RelayCommand<object> RelinkSelectedCommand { get; private set; }
+        public RelayCommand<object> MarkNotFoundAsUninstalledCommand { get; private set; }
+        public RelayCommand<object> ApplyLocalSourceToExistingCommand { get; private set; }
 
         public ICollectionView ExcludedView { get; private set; }
         public RelayCommand<object> RemoveExcludedCommand { get; private set; }
@@ -255,6 +272,7 @@ namespace BuscaDeJogosLocais
             }
 
             if (Settings.CaminhosIgnorados == null) Settings.CaminhosIgnorados = new ObservableCollection<ExcludedEntry>();
+            if (Settings.HistoricoDesinstalacoes == null) Settings.HistoricoDesinstalacoes = new ObservableCollection<UninstallLogEntry>();
 
             // Inicializar Views de Coleção
             JogosEncontradosView = CollectionViewSource.GetDefaultView(JogosEncontrados);
@@ -268,11 +286,40 @@ namespace BuscaDeJogosLocais
             JogosParaRelinkarView = CollectionViewSource.GetDefaultView(JogosParaRelinkar);
 
             ExcludedView = CollectionViewSource.GetDefaultView(Settings.CaminhosIgnorados);
+            HistoricoDesinstalacoesView = CollectionViewSource.GetDefaultView(Settings.HistoricoDesinstalacoes);
 
             RemoveExcludedCommand = new RelayCommand<object>((param) =>
             {
                 var entry = param as ExcludedEntry;
                 if (entry != null) Settings.CaminhosIgnorados.Remove(entry);
+            });
+
+            ReinstalarCommand = new RelayCommand<object>((param) =>
+            {
+                var entry = param as UninstallLogEntry;
+                if (entry == null) return;
+
+                var game = plugin.PlayniteApi.Database.Games.Get(entry.GameId);
+                if (game == null)
+                {
+                    plugin.PlayniteApi.Dialogs.ShowMessage("O jogo não existe mais na biblioteca. A entrada será removida do histórico.", "Aviso");
+                    Settings.HistoricoDesinstalacoes.Remove(entry);
+                    plugin.SavePluginSettings(Settings);
+                    return;
+                }
+
+                game.IsInstalled = true;
+                plugin.PlayniteApi.Database.Games.Update(game);
+                Settings.HistoricoDesinstalacoes.Remove(entry);
+                plugin.SavePluginSettings(Settings);
+
+                plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("'{0}' marcado como instalado novamente. Se a pasta mudou, use a aba 'Reparar Desinstalados' para reapontar o caminho.", game.Name), "Sucesso");
+            });
+
+            ClearUninstallHistoryCommand = new RelayCommand<object>((_) =>
+            {
+                Settings.HistoricoDesinstalacoes.Clear();
+                plugin.SavePluginSettings(Settings);
             });
 
             AddFolderCommand = new RelayCommand<object>((_) =>
@@ -347,6 +394,42 @@ namespace BuscaDeJogosLocais
                 plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogos atualizados com a característica do HD.", atualizados), "Sucesso");
             });
 
+            ApplyLocalSourceToExistingCommand = new RelayCommand<object>((_) =>
+            {
+                int atualizados = 0;
+                var games = plugin.PlayniteApi.Database.Games.Where(g => g.PluginId == plugin.Id).ToList();
+
+                foreach (var game in games)
+                {
+                    if (plugin.ApplyLocalSource(game))
+                    {
+                        atualizados++;
+                        plugin.PlayniteApi.Database.Games.Update(game);
+                    }
+                }
+
+                plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) marcado(s) com a Fonte \"Local\".", atualizados), "Sucesso");
+            });
+
+            MarkNotFoundAsUninstalledCommand = new RelayCommand<object>((_) =>
+            {
+                var alvos = JogosParaRelinkar.Where(j => j.Selecionado && j.Status == "Não Encontrado").ToList();
+                if (alvos.Count == 0)
+                {
+                    plugin.PlayniteApi.Dialogs.ShowMessage("Selecione um ou mais jogos com status \"Não Encontrado\" para marcar como desinstalados.", "Aviso");
+                    return;
+                }
+
+                foreach (var item in alvos)
+                {
+                    plugin.MarcarComoDesinstalado(item.GameId);
+                    item.Status = "Desinstalado";
+                    item.Selecionado = false;
+                }
+
+                plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) marcado(s) como desinstalado(s).", alvos.Count), "Sucesso");
+            });
+
             SearchLostGamesCommand = new RelayCommand<object>((_) =>
             {
                 JogosParaRelinkar.Clear();
@@ -359,13 +442,19 @@ namespace BuscaDeJogosLocais
                     {
                         if (progressArgs.CancelToken.IsCancellationRequested) break;
 
-                        if (game.IsInstalled) continue;
                         if (game.PluginId != Guid.Empty && game.PluginId != plugin.Id) continue;
                         if (game.GameActions == null || game.GameActions.Count == 0) continue;
                         if (game.GameActions.Any(a => a.Type == Playnite.SDK.Models.GameActionType.Emulator)) continue;
 
                         var fileAction = game.GameActions.FirstOrDefault(a => a.Type == Playnite.SDK.Models.GameActionType.File);
                         if (fileAction == null || string.IsNullOrEmpty(fileAction.Path)) continue;
+
+                        // Jogos instalados cujo executável ainda existe estão saudáveis: não precisam de relink.
+                        if (game.IsInstalled)
+                        {
+                            string caminhoAtual = plugin.PlayniteApi.ExpandGameVariables(game, fileAction.Path);
+                            if (File.Exists(caminhoAtual)) continue;
+                        }
 
                         string exeName = Path.GetFileName(fileAction.Path);
                         if (string.IsNullOrEmpty(exeName)) continue;
