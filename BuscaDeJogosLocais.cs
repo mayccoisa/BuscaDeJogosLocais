@@ -18,7 +18,7 @@ namespace BuscaDeJogosLocais
         private static readonly ILogger logger = LogManager.GetLogger();
         private List<FileSystemWatcher> _vigias = new List<FileSystemWatcher>();
         public override Guid Id { get { return Guid.Parse("186d9374-4173-420d-b17a-e2ace45bb317"); } }
-        public override string Name { get { return "Busca de Jogos Locais"; } }
+        public override string Name { get { return "Local"; } }
         public override LibraryClient Client { get { return null; } }
 
         private BuscaDeJogosLocaisSettingsViewModel settings;
@@ -439,14 +439,14 @@ namespace BuscaDeJogosLocais
             yield return new MainMenuItem
             {
                 Description = "Buscar Novos Jogos",
-                MenuSection = "@Busca de Jogos Locais",
+                MenuSection = "@Local",
                 Action = (mainMenuItemArgs) => AbrirScanRapido()
             };
 
             yield return new MainMenuItem
             {
                 Description = "Verificar Integridade da Biblioteca",
-                MenuSection = "@Busca de Jogos Locais",
+                MenuSection = "@Local",
                 Action = (mainMenuItemArgs) => CheckLibraryIntegrity()
             };
         }

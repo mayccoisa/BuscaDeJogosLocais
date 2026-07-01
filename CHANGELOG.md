@@ -6,6 +6,14 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.2.1] - 2026-06-30
+
+### Alterado
+- A **biblioteca** dos jogos importados agora aparece como **"Local"** na barra lateral do Playnite, em vez de "Busca de Jogos Locais" — mais fácil de encontrar e com nome mais claro. Vale automaticamente para os jogos já importados (basta reiniciar o Playnite). A Fonte dos jogos já era "Local".
+- O grupo da extensão no menu **Extensões** passou a se chamar **"Local"**.
+
+---
+
 ## [0.2.0] - 2026-06-30
 
 ### Adicionado
