@@ -85,6 +85,30 @@ class RegressionTests
         Check("nao casa quando fora da lista", !LocalGameUtils.IsPathExcluded(@"C:\Games\Bar\Bar.exe", excl));
         Check("lista null nao exclui nada", !LocalGameUtils.IsPathExcluded(@"C:\x.exe", null));
 
+        // ---- NormalizeGameName ----
+        Console.WriteLine("[NormalizeGameName]");
+        Eq("trim e minusculo", "cool game", LocalGameUtils.NormalizeGameName("  Cool Game "));
+        Eq("colapsa espacos duplos", "cool game", LocalGameUtils.NormalizeGameName("Cool   Game"));
+        Eq("null vira vazio", "", LocalGameUtils.NormalizeGameName(null));
+        Check("mesmos nomes com caixa diferente sao iguais",
+            LocalGameUtils.NormalizeGameName("The GAME") == LocalGameUtils.NormalizeGameName("the game"));
+
+        // ---- MatchesSavePattern ----
+        Console.WriteLine("[MatchesSavePattern]");
+        var patterns = LocalGameUtils.DefaultSavePatterns;
+        Check("pasta 'Saves' casa (case-insensitive)",
+            LocalGameUtils.MatchesSavePattern(new List<string> { "bin", "Saves" }, new List<string>(), patterns));
+        Check("arquivo .sav casa por extensao",
+            LocalGameUtils.MatchesSavePattern(new List<string>(), new List<string> { "player1.SAV" }, patterns));
+        Check("pasta comum nao casa",
+            !LocalGameUtils.MatchesSavePattern(new List<string> { "bin", "data" }, new List<string> { "game.exe" }, patterns));
+        Check("padroes null nao casa",
+            !LocalGameUtils.MatchesSavePattern(new List<string> { "save" }, null, null));
+        Check("padrao customizado por nome casa",
+            LocalGameUtils.MatchesSavePattern(new List<string> { "MinhaPasta" }, new List<string>(), new List<string> { "minhapasta" }));
+        Check("substring parcial NAO casa (match exato)",
+            !LocalGameUtils.MatchesSavePattern(new List<string> { "savescreenshots" }, new List<string>(), new List<string> { "save" }));
+
         Console.WriteLine();
         Console.WriteLine(string.Format("Resultado: {0}/{1} passaram, {2} falha(s).", total - failures, total, failures));
         return failures == 0 ? 0 : 1;

@@ -413,6 +413,115 @@ namespace BuscaDeJogosLocais
             return true;
         }
 
+        public List<string> GetSavePatterns()
+        {
+            if (settings != null && settings.Settings != null && settings.Settings.PadroesSave != null && settings.Settings.PadroesSave.Count > 0)
+                return settings.Settings.PadroesSave.ToList();
+            return LocalGameUtils.DefaultSavePatterns.ToList();
+        }
+
+        // Percorre a pasta do jogo (recursivamente) procurando por um "save" segundo os padrões configurados.
+        // Se houver save em qualquer nível dentro da pasta, NÃO é seguro apagar a pasta.
+        public bool HasSaveInRoot(string root)
+        {
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return false;
+
+            var patterns = GetSavePatterns();
+            var dirNames = new List<string>();
+            var fileNames = new List<string>();
+
+            var stack = new Stack<string>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                string cur = stack.Pop();
+
+                try
+                {
+                    foreach (var d in Directory.EnumerateDirectories(cur))
+                    {
+                        dirNames.Add(new DirectoryInfo(d).Name);
+                        stack.Push(d);
+                    }
+                }
+                catch (Exception) { }
+
+                try
+                {
+                    foreach (var f in Directory.EnumerateFiles(cur))
+                        fileNames.Add(Path.GetFileName(f));
+                }
+                catch (Exception) { }
+
+                if (LocalGameUtils.MatchesSavePattern(dirNames, fileNames, patterns))
+                    return true;
+            }
+
+            return false;
+        }
+
+        // Envia a pasta do jogo duplicado para a Lixeira, remove o jogo da biblioteca e registra no histórico.
+        public bool RemoverDuplicata(DuplicateGameItem item)
+        {
+            if (item == null) return false;
+
+            string destino = "Lixeira";
+            bool pastaOk = true;
+
+            try
+            {
+                if (!string.IsNullOrEmpty(item.InstallDir) && Directory.Exists(item.InstallDir))
+                {
+                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                        item.InstallDir,
+                        Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                        Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, string.Format("Falha ao enviar pasta para a Lixeira: {0}", item.InstallDir));
+                destino = "Falha";
+                pastaOk = false;
+            }
+
+            if (!pastaOk) return false;
+
+            bool removidoDb = false;
+            try
+            {
+                var game = PlayniteApi.Database.Games.Get(item.GameId);
+                if (game != null)
+                {
+                    PlayniteApi.Database.Games.Remove(item.GameId);
+                    removidoDb = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, string.Format("Falha ao remover jogo duplicado da biblioteca: {0}", item.Nome));
+            }
+
+            try
+            {
+                if (settings.Settings.HistoricoDuplicatasRemovidas == null)
+                    settings.Settings.HistoricoDuplicatasRemovidas = new ObservableCollection<DuplicateRemovalLogEntry>();
+
+                settings.Settings.HistoricoDuplicatasRemovidas.Add(new DuplicateRemovalLogEntry
+                {
+                    DataRemocao = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"),
+                    NomeJogo = item.Nome,
+                    PastaRemovida = item.InstallDir,
+                    TinhaSave = item.TemSaveNaRaiz ? "Sim" : "Não",
+                    Destino = destino,
+                    RemovidoDaBiblioteca = removidoDb
+                });
+            }
+            catch (Exception) { }
+
+            return true;
+        }
+
         public bool ApplyDriveTag(Game game)
         {
             if (string.IsNullOrEmpty(game.InstallDirectory)) return false;

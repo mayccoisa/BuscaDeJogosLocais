@@ -124,6 +124,38 @@ namespace BuscaDeJogosLocais
         public bool Selecionado { get { return selecionado; } set { SetValue(ref selecionado, value); } }
     }
 
+    // Uma instalação individual pertencente a um grupo de jogos duplicados.
+    public class DuplicateGameItem : ObservableObject
+    {
+        public Guid GameId { get; set; }
+        public string Nome { get; set; }
+        public string NomeNormalizado { get; set; } // usado para agrupar no DataGrid
+        public string InstallDir { get; set; }
+        public string CaminhoExe { get; set; }
+
+        private bool temSaveNaRaiz;
+        public bool TemSaveNaRaiz { get { return temSaveNaRaiz; } set { SetValue(ref temSaveNaRaiz, value); OnPropertyChanged("SaveStatus"); } }
+
+        public string SaveStatus { get { return TemSaveNaRaiz ? "Save na pasta" : "Sem save (seguro)"; } }
+
+        private bool selecionado;
+        public bool Selecionado { get { return selecionado; } set { SetValue(ref selecionado, value); } }
+
+        private string status = "";
+        public string Status { get { return status; } set { SetValue(ref status, value); } }
+    }
+
+    // Registro de monitoramento de cada pasta de duplicata removida.
+    public class DuplicateRemovalLogEntry : ObservableObject
+    {
+        public string DataRemocao { get; set; }
+        public string NomeJogo { get; set; }
+        public string PastaRemovida { get; set; }
+        public string TinhaSave { get; set; }        // "Sim"/"Não"
+        public string Destino { get; set; }          // "Lixeira" / "Falha"
+        public bool RemovidoDaBiblioteca { get; set; }
+    }
+
     public class ExcludedEntry : ObservableObject
     {
         public string CaminhoExe { get; set; }
@@ -157,6 +189,13 @@ namespace BuscaDeJogosLocais
 
         private ObservableCollection<ExcludedEntry> caminhosIgnorados = new ObservableCollection<ExcludedEntry>();
         public ObservableCollection<ExcludedEntry> CaminhosIgnorados { get { return caminhosIgnorados; } set { SetValue(ref caminhosIgnorados, value); } }
+
+        // Padrões que identificam um "save" dentro da pasta de um jogo (nomes de pasta/arquivo ou extensões como ".sav").
+        private ObservableCollection<string> padroesSave = new ObservableCollection<string>();
+        public ObservableCollection<string> PadroesSave { get { return padroesSave; } set { SetValue(ref padroesSave, value); } }
+
+        private ObservableCollection<DuplicateRemovalLogEntry> historicoDuplicatasRemovidas = new ObservableCollection<DuplicateRemovalLogEntry>();
+        public ObservableCollection<DuplicateRemovalLogEntry> HistoricoDuplicatasRemovidas { get { return historicoDuplicatasRemovidas; } set { SetValue(ref historicoDuplicatasRemovidas, value); } }
     }
 
     public class BuscaDeJogosLocaisSettingsViewModel : ObservableObject, ISettings
@@ -244,6 +283,16 @@ namespace BuscaDeJogosLocais
         public ICollectionView ExcludedView { get; private set; }
         public RelayCommand<object> RemoveExcludedCommand { get; private set; }
 
+        // Duplicados
+        public ObservableCollection<DuplicateGameItem> Duplicatas { get; private set; }
+        public ICollectionView DuplicatasView { get; private set; }
+        public ICollectionView DuplicatasRemovidasView { get; private set; }
+        public RelayCommand<object> SearchDuplicatesCommand { get; private set; }
+        public RelayCommand<object> RemoveDuplicatesCommand { get; private set; }
+        public RelayCommand<object> ClearDuplicateHistoryCommand { get; private set; }
+        public RelayCommand<object> AddSavePatternCommand { get; private set; }
+        public RelayCommand<object> RemoveSavePatternCommand { get; private set; }
+
         public string UltimoScanTexto
         {
             get
@@ -273,6 +322,14 @@ namespace BuscaDeJogosLocais
 
             if (Settings.CaminhosIgnorados == null) Settings.CaminhosIgnorados = new ObservableCollection<ExcludedEntry>();
             if (Settings.HistoricoDesinstalacoes == null) Settings.HistoricoDesinstalacoes = new ObservableCollection<UninstallLogEntry>();
+            if (Settings.HistoricoDuplicatasRemovidas == null) Settings.HistoricoDuplicatasRemovidas = new ObservableCollection<DuplicateRemovalLogEntry>();
+            if (Settings.PadroesSave == null) Settings.PadroesSave = new ObservableCollection<string>();
+            if (Settings.PadroesSave.Count == 0)
+            {
+                foreach (var p in LocalGameUtils.DefaultSavePatterns) Settings.PadroesSave.Add(p);
+            }
+
+            Duplicatas = new ObservableCollection<DuplicateGameItem>();
 
             // Inicializar Views de Coleção
             JogosEncontradosView = CollectionViewSource.GetDefaultView(JogosEncontrados);
@@ -288,10 +345,170 @@ namespace BuscaDeJogosLocais
             ExcludedView = CollectionViewSource.GetDefaultView(Settings.CaminhosIgnorados);
             HistoricoDesinstalacoesView = CollectionViewSource.GetDefaultView(Settings.HistoricoDesinstalacoes);
 
+            DuplicatasView = CollectionViewSource.GetDefaultView(Duplicatas);
+            DuplicatasView.GroupDescriptions.Add(new PropertyGroupDescription("Nome"));
+            DuplicatasRemovidasView = CollectionViewSource.GetDefaultView(Settings.HistoricoDuplicatasRemovidas);
+
             RemoveExcludedCommand = new RelayCommand<object>((param) =>
             {
                 var entry = param as ExcludedEntry;
                 if (entry != null) Settings.CaminhosIgnorados.Remove(entry);
+            });
+
+            AddSavePatternCommand = new RelayCommand<object>((_) =>
+            {
+                var texto = plugin.PlayniteApi.Dialogs.SelectString(
+                    "Digite um nome de pasta/arquivo de save (ex: saves) ou uma extensão (ex: .sav):",
+                    "Adicionar padrão de save", "");
+                if (texto != null && texto.Result && !string.IsNullOrEmpty(texto.SelectedString))
+                {
+                    string valor = texto.SelectedString.Trim();
+                    if (valor.Length > 0 && !Settings.PadroesSave.Any(p => p.Equals(valor, StringComparison.OrdinalIgnoreCase)))
+                        Settings.PadroesSave.Add(valor);
+                }
+            });
+
+            RemoveSavePatternCommand = new RelayCommand<object>((param) =>
+            {
+                var valor = param as string;
+                if (valor != null) Settings.PadroesSave.Remove(valor);
+            });
+
+            ClearDuplicateHistoryCommand = new RelayCommand<object>((_) =>
+            {
+                Settings.HistoricoDuplicatasRemovidas.Clear();
+                plugin.SavePluginSettings(Settings);
+            });
+
+            SearchDuplicatesCommand = new RelayCommand<object>((_) =>
+            {
+                Duplicatas.Clear();
+
+                plugin.PlayniteApi.Dialogs.ActivateGlobalProgress((progressArgs) =>
+                {
+                    // Considera apenas jogos locais (do próprio plugin).
+                    var locais = plugin.PlayniteApi.Database.Games
+                        .Where(g => g.PluginId == plugin.Id && !string.IsNullOrEmpty(g.InstallDirectory))
+                        .ToList();
+
+                    var grupos = locais
+                        .GroupBy(g => LocalGameUtils.NormalizeGameName(g.Name))
+                        .Where(grp => grp.Count() > 1)
+                        .ToList();
+
+                    var novos = new List<DuplicateGameItem>();
+                    foreach (var grupo in grupos)
+                    {
+                        if (progressArgs.CancelToken.IsCancellationRequested) break;
+
+                        var itensGrupo = new List<DuplicateGameItem>();
+                        foreach (var game in grupo)
+                        {
+                            if (progressArgs.CancelToken.IsCancellationRequested) break;
+
+                            string exe = null;
+                            if (game.GameActions != null)
+                            {
+                                var fa = game.GameActions.FirstOrDefault(a => a.Type == Playnite.SDK.Models.GameActionType.File);
+                                if (fa != null) exe = fa.Path;
+                            }
+
+                            bool temSave = plugin.HasSaveInRoot(game.InstallDirectory);
+
+                            itensGrupo.Add(new DuplicateGameItem
+                            {
+                                GameId = game.Id,
+                                Nome = game.Name,
+                                NomeNormalizado = grupo.Key,
+                                InstallDir = game.InstallDirectory,
+                                CaminhoExe = exe,
+                                TemSaveNaRaiz = temSave,
+                                Status = ""
+                            });
+                        }
+
+                        // Pré-seleção: marca para remoção as cópias SEM save na raiz,
+                        // mas garante que ao menos uma cópia do grupo permaneça.
+                        var semSave = itensGrupo.Where(i => !i.TemSaveNaRaiz).ToList();
+                        int marcaveis = semSave.Count;
+                        if (marcaveis >= itensGrupo.Count && itensGrupo.Count > 0)
+                        {
+                            // Todas sem save: mantém a primeira sem marcar.
+                            marcaveis = itensGrupo.Count - 1;
+                        }
+                        int marcadas = 0;
+                        foreach (var item in itensGrupo)
+                        {
+                            if (!item.TemSaveNaRaiz && marcadas < marcaveis)
+                            {
+                                item.Selecionado = true;
+                                marcadas++;
+                            }
+                        }
+
+                        novos.AddRange(itensGrupo);
+                    }
+
+                    plugin.PlayniteApi.MainView.UIDispatcher.Invoke(() =>
+                    {
+                        foreach (var item in novos.OrderBy(i => i.NomeNormalizado)) Duplicatas.Add(item);
+                    });
+                }, new Playnite.SDK.GlobalProgressOptions("Procurando jogos duplicados...", true));
+
+                if (Duplicatas.Count == 0)
+                {
+                    plugin.PlayniteApi.Dialogs.ShowMessage("Nenhum jogo local duplicado foi encontrado.", "Duplicados");
+                }
+            });
+
+            RemoveDuplicatesCommand = new RelayCommand<object>((_) =>
+            {
+                var selecionados = Duplicatas.Where(d => d.Selecionado).ToList();
+                if (selecionados.Count == 0)
+                {
+                    plugin.PlayniteApi.Dialogs.ShowMessage("Nenhuma cópia selecionada para remoção.", "Aviso");
+                    return;
+                }
+
+                // Segurança: nunca remover TODAS as cópias de um mesmo jogo.
+                var gruposSel = selecionados.GroupBy(d => d.NomeNormalizado);
+                foreach (var grupo in gruposSel)
+                {
+                    int totalGrupo = Duplicatas.Count(d => d.NomeNormalizado == grupo.Key);
+                    if (grupo.Count() >= totalGrupo)
+                    {
+                        plugin.PlayniteApi.Dialogs.ShowMessage(
+                            string.Format("Você selecionou todas as cópias de \"{0}\". Deixe ao menos uma cópia sem marcar.", grupo.First().Nome),
+                            "Operação bloqueada");
+                        return;
+                    }
+                }
+
+                int comSave = selecionados.Count(d => d.TemSaveNaRaiz);
+                string aviso = string.Format("Serão enviadas para a Lixeira {0} pasta(s) de jogos duplicados e removidas da biblioteca.", selecionados.Count);
+                if (comSave > 0)
+                    aviso += string.Format("\n\nATENÇÃO: {0} dela(s) contêm um save na pasta e podem perder progresso!", comSave);
+                aviso += "\n\nDeseja continuar?";
+
+                if (plugin.PlayniteApi.Dialogs.ShowMessage(aviso, "Confirmar remoção de duplicados", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+                    return;
+
+                int removidos = 0;
+                foreach (var item in selecionados)
+                {
+                    if (plugin.RemoverDuplicata(item))
+                    {
+                        removidos++;
+                        Duplicatas.Remove(item);
+                    }
+                    else
+                    {
+                        item.Status = "Falha ao remover";
+                    }
+                }
+
+                plugin.SavePluginSettings(Settings);
+                plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} pasta(s) removida(s) e enviada(s) para a Lixeira.", removidos), "Concluído");
             });
 
             ReinstalarCommand = new RelayCommand<object>((param) =>
@@ -545,6 +762,8 @@ namespace BuscaDeJogosLocais
                             else
                             {
                                 relinkItem.Status = "Não Encontrado";
+                                // Já vem marcado para agilizar a marcação em lote como desinstalado.
+                                relinkItem.Selecionado = true;
                             }
                         });
                     }

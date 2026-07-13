@@ -421,6 +421,146 @@
                             Margin="0,10,0,0" HorizontalAlignment="Right" />
                 </Grid>
             </TabItem>
+            <!-- ABA 7: DUPLICADOS -->
+            <TabItem Header="Duplicados">
+                <Grid Margin="10,15,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
+                        <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                                   Text="Localiza jogos locais duplicados (mesmo nome). Para cada cópia, o plugin verifica se há um save dentro da pasta. Cópias SEM save são consideradas seguras e já vêm marcadas para remoção. Ao remover, a pasta é enviada para a Lixeira e o jogo é retirado da biblioteca (registrado em 'Duplicados Removidos'). Ao menos uma cópia de cada jogo é sempre mantida." />
+                    </Border>
+
+                    <!-- CONFIGURAÇÃO DOS PADRÕES DE SAVE -->
+                    <Expander Grid.Row="1" Header="Padrões de save (pastas/arquivos que indicam progresso salvo)"
+                              Foreground="Gold" FontWeight="Bold" IsExpanded="False" Margin="0,0,0,10">
+                        <Border Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,5,0,0">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Opacity="0.7" FontWeight="Normal" FontSize="11" Margin="0,0,0,8"
+                                           Text="Use nomes de pasta/arquivo (ex: saves) ou extensões iniciadas por ponto (ex: .sav). Se qualquer um destes for encontrado dentro da pasta do jogo, a cópia é tratada como 'com save' e não vem marcada para remoção." />
+                                <Button Content="➕ Adicionar padrão" Command="{Binding AddSavePatternCommand}"
+                                        Padding="10,4" HorizontalAlignment="Left" FontWeight="Normal" Margin="0,0,0,8" Cursor="Hand" />
+                                <ItemsControl ItemsSource="{Binding Settings.PadroesSave}" MaxHeight="140">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                <Button Content="✖" Command="{Binding DataContext.RemoveSavePatternCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" Padding="4,0" Margin="0,0,8,0" FontWeight="Normal" Cursor="Hand" />
+                                                <TextBlock Text="{Binding}" VerticalAlignment="Center" FontWeight="Normal" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </Expander>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
+                        <Button Content="🔍 PROCURAR DUPLICADOS" Command="{Binding SearchDuplicatesCommand}" Padding="15,8" FontWeight="Bold" />
+                        <TextBlock Text="Agrupa jogos locais com o mesmo nome e verifica saves." VerticalAlignment="Center" Margin="15,0,0,0" Opacity="0.7" />
+                    </StackPanel>
+
+                    <DataGrid Grid.Row="3" ItemsSource="{Binding DuplicatasView}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" SelectionMode="Single"
+                              Background="#11FFFFFF" BorderThickness="1"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              CanUserResizeColumns="True" CanUserReorderColumns="True">
+                        <DataGrid.GroupStyle>
+                            <GroupStyle ContainerStyle="{StaticResource GroupHeaderStyle}" />
+                        </DataGrid.GroupStyle>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Apagar" Width="60">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{DynamicResource TextBrush}" BorderThickness="1" CornerRadius="2"
+                                                Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.6">
+                                            <CheckBox IsChecked="{Binding Selecionado, UpdateSourceTrigger=PropertyChanged}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="-1" />
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Save" Width="150" SortMemberPath="SaveStatus">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding SaveStatus}" VerticalAlignment="Center" Margin="5,4" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Pasta de Instalação" Width="3*" MinWidth="250" SortMemberPath="InstallDir">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding InstallDir}" VerticalAlignment="Center" Margin="5,2"
+                                                   Foreground="{DynamicResource TextBrush}" Opacity="0.85"
+                                                   ToolTip="{Binding InstallDir}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="Status" Width="130" SortMemberPath="Status">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Margin="5,4" Foreground="OrangeRed" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="4" Content="🗑️ ENVIAR SELECIONADOS PARA A LIXEIRA"
+                            Command="{Binding RemoveDuplicatesCommand}"
+                            Margin="0,10,0,0" Padding="20,10" FontWeight="Bold" Background="#22FF0000" HorizontalAlignment="Right" />
+                </Grid>
+            </TabItem>
+            <!-- ABA 8: DUPLICADOS REMOVIDOS -->
+            <TabItem Header="Duplicados Removidos">
+                <Grid Margin="10,15,10,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="#11FFFFFF" Padding="10" CornerRadius="5" Margin="0,0,0,10">
+                        <TextBlock Text="Registro das pastas de jogos duplicados enviadas para a Lixeira. Caso precise recuperar, restaure a pasta pela Lixeira do Windows e reimporte o jogo."
+                                   TextWrapping="Wrap" Opacity="0.8" />
+                    </Border>
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding DuplicatasRemovidasView}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                              Background="#11FFFFFF" BorderThickness="1"
+                              HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              CanUserResizeColumns="True" CanUserReorderColumns="True" SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Data" Binding="{Binding DataRemocao}" Width="150" />
+                            <DataGridTextColumn Header="Jogo" Binding="{Binding NomeJogo}" Width="*" />
+                            <DataGridTextColumn Header="Tinha Save" Binding="{Binding TinhaSave}" Width="90" />
+                            <DataGridTextColumn Header="Destino" Binding="{Binding Destino}" Width="90" />
+                            <DataGridTextColumn Header="Pasta Removida" Binding="{Binding PastaRemovida}" Width="2*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Opacity" Value="0.6" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                        <Setter Property="ToolTip" Value="{Binding PastaRemovida}" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="2" Content="Limpar Histórico de Duplicados Removidos"
+                            Command="{Binding ClearDuplicateHistoryCommand}"
+                            Margin="0,10,0,0" HorizontalAlignment="Right" />
+                </Grid>
+            </TabItem>
         </TabControl>
     </Grid>
 </UserControl>

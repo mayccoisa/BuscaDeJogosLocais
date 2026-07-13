@@ -6,6 +6,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.3.0] - 2026-07-13
+
+### Adicionado
+- Nova aba **"Duplicados"**: encontra jogos locais duplicados (mesmo nome) e, para cada cópia, verifica se há um **save dentro da pasta**. As cópias **sem save** já vêm marcadas como seguras para remoção. Ao confirmar, a pasta é enviada para a **Lixeira do Windows** (recuperável) e o jogo é removido da biblioteca. O plugin sempre mantém pelo menos uma cópia de cada jogo.
+- Configuração de **padrões de save** (dentro da aba Duplicados): defina nomes de pastas/arquivos (ex: `saves`) ou extensões (ex: `.sav`) que indicam progresso salvo. Já vem com uma lista padrão.
+- Nova aba **"Duplicados Removidos"**: histórico das pastas enviadas para a Lixeira, incluindo se tinham save e o destino, para acompanhamento.
+
+### Alterado
+- Na aba **"Reparar Desinstalados"**, os jogos **não encontrados** agora já vêm **marcados** automaticamente (assim como os prontos para relink), evitando ter que selecionar um por um antes de marcar como desinstalados.
+
+---
+
 ## [0.2.1] - 2026-06-30
 
 ### Alterado

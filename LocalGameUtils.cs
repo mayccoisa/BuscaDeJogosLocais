@@ -61,5 +61,68 @@ namespace BuscaDeJogosLocais
             if (excludedExePaths == null || string.IsNullOrEmpty(exePath)) return false;
             return excludedExePaths.Any(e => e != null && e.Equals(exePath, StringComparison.OrdinalIgnoreCase));
         }
+
+        // Padrões usados para reconhecer que uma pasta de jogo contém um "save" local.
+        // Entradas começando com "." são tratadas como extensões de arquivo (ex: ".sav");
+        // as demais são comparadas com nomes de pastas ou nomes de arquivo (sem extensão).
+        public static readonly string[] DefaultSavePatterns =
+        {
+            "save", "saves", "saved", "savegame", "savegames", "savedata",
+            "profile", "profiles", "playerdata", "userdata", "slot",
+            ".sav", ".save"
+        };
+
+        // Normaliza o nome de um jogo para agrupar duplicatas (trim + minúsculo + espaços colapsados).
+        public static string NormalizeGameName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return string.Empty;
+            string n = name.Trim().ToLowerInvariant();
+            while (n.Contains("  ")) n = n.Replace("  ", " ");
+            return n;
+        }
+
+        // Decide se os nomes de pastas/arquivos informados casam com algum padrão de save.
+        // 'dirNames' e 'fileNames' devem conter apenas os nomes (não caminhos completos).
+        // Lógica pura para permitir testes: quem enumera o disco é o plugin.
+        public static bool MatchesSavePattern(IEnumerable<string> dirNames, IEnumerable<string> fileNames, IEnumerable<string> savePatterns)
+        {
+            if (savePatterns == null) return false;
+
+            var extPatterns = new List<string>();
+            var namePatterns = new List<string>();
+            foreach (var p in savePatterns)
+            {
+                if (string.IsNullOrEmpty(p)) continue;
+                string lp = p.Trim().ToLowerInvariant();
+                if (lp.Length == 0) continue;
+                if (lp[0] == '.') extPatterns.Add(lp);
+                else namePatterns.Add(lp);
+            }
+
+            if (dirNames != null && namePatterns.Count > 0)
+            {
+                foreach (var d in dirNames)
+                {
+                    if (d == null) continue;
+                    if (namePatterns.Contains(d.ToLowerInvariant())) return true;
+                }
+            }
+
+            if (fileNames != null)
+            {
+                foreach (var f in fileNames)
+                {
+                    if (f == null) continue;
+                    string lf = f.ToLowerInvariant();
+                    string ext = Path.GetExtension(lf);
+                    if (!string.IsNullOrEmpty(ext) && extPatterns.Contains(ext)) return true;
+
+                    string baseName = Path.GetFileNameWithoutExtension(lf);
+                    if (namePatterns.Contains(baseName)) return true;
+                }
+            }
+
+            return false;
+        }
     }
 }
