@@ -6,6 +6,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.4.0] - 2026-07-28
+
+### Adicionado
+- Nova aba **"Atualizações"** nas configurações: um botão verifica se saiu uma versão mais nova da extensão, mostra o que mudou e, se você confirmar, baixa e abre a instalação no próprio Playnite. Acabou a rotina de entrar no GitHub e baixar o arquivo à mão. Basta reiniciar o Playnite depois de instalar.
+- **Download automático de metadados após importar**: ao terminar a importação, a extensão busca capa, ícone, imagem de fundo, descrição, gêneros, desenvolvedores, publishers, data de lançamento, notas e links nas fontes de metadados que você já usa no Playnite (IGDB, Xbox Metadata e afins). Os jogos entram na biblioteca já com a capa, sem precisar rodar o download um por um.
+  - Vale para os três caminhos de importação: aba "Busca e Importação", janela do scan manual e janela do scan automático.
+  - Campo que o jogo já tenha preenchido **nunca** é sobrescrito, e dá para acompanhar e cancelar pela barra de progresso.
+  - A opção fica na aba "Pastas Monitoradas", em **Metadados**, e já vem ligada.
+
+---
+
 ## [0.3.0] - 2026-07-13
 
 ### Adicionado

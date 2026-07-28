@@ -177,11 +177,17 @@ namespace BuscaDeJogosLocais
                 resultados,
                 importar: (selecionados) =>
                 {
+                    var importados = new List<Guid>();
                     foreach (var j in selecionados)
                     {
-                        if (ImportarJogoManual(j))
+                        Guid novoId;
+                        if (ImportarJogoManual(j, out novoId))
+                        {
                             j.JaExiste = true;
+                            importados.Add(novoId);
+                        }
                     }
+                    BaixarMetadadosDosImportados(importados);
                 },
                 ignorar: (jogo) => AdicionarExcluido(jogo)
             );
@@ -223,11 +229,17 @@ namespace BuscaDeJogosLocais
                     new ObservableCollection<ScannedGame>(novos),
                     importar: (selecionados) =>
                     {
+                        var importados = new List<Guid>();
                         foreach (var j in selecionados)
                         {
-                            if (ImportarJogoManual(j))
+                            Guid novoId;
+                            if (ImportarJogoManual(j, out novoId))
+                            {
                                 j.JaExiste = true;
+                                importados.Add(novoId);
+                            }
                         }
+                        BaixarMetadadosDosImportados(importados);
                     },
                     ignorar: (jogo) => AdicionarExcluido(jogo)
                 );
@@ -303,6 +315,13 @@ namespace BuscaDeJogosLocais
 
         public bool ImportarJogoManual(ScannedGame scanned)
         {
+            Guid ignorado;
+            return ImportarJogoManual(scanned, out ignorado);
+        }
+
+        public bool ImportarJogoManual(ScannedGame scanned, out Guid gameId)
+        {
+            gameId = Guid.Empty;
             string normRoot = NormalizePath(scanned.PastaRaiz);
             if (PlayniteApi.Database.Games.Any(g => g.InstallDirectory != null && NormalizePath(g.InstallDirectory).Equals(normRoot, StringComparison.OrdinalIgnoreCase)))
                 return false;
@@ -328,7 +347,8 @@ namespace BuscaDeJogosLocais
             ApplyLocalSource(game);
 
             PlayniteApi.Database.Games.Add(game);
-            
+            gameId = game.Id;
+
             try {
                 settings.Settings.HistoricoImportacoes.Add(new ImportLogEntry { 
                     DataImportacao = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss"), 
@@ -339,6 +359,58 @@ namespace BuscaDeJogosLocais
                 SavePluginSettings(settings.Settings);
             } catch (Exception) { }
             return true;
+        }
+
+        /// <summary>
+        /// Roda o download de metadados (capa, ícone, fundo, descrição, gêneros...) nos jogos recém-importados,
+        /// usando as fontes de metadados instaladas no Playnite. Respeita a opção da tela de configurações
+        /// e nunca sobrescreve campo que o jogo já tenha preenchido.
+        /// </summary>
+        public void BaixarMetadadosDosImportados(List<Guid> gameIds)
+        {
+            if (!settings.Settings.BaixarMetadadosAposImportar) return;
+            if (gameIds == null || gameIds.Count == 0) return;
+
+            var downloader = new MetadataDownloader(PlayniteApi);
+            if (!downloader.HasProviders)
+            {
+                logger.Warn("Nenhuma fonte de metadados instalada no Playnite; download pós-importação ignorado.");
+                PlayniteApi.Dialogs.ShowMessage(
+                    "Os jogos foram importados, mas nenhuma fonte de metadados está instalada no Playnite (ex: IGDB).\n\n" +
+                    "Instale uma fonte em Add-ons para que a capa e os metadados sejam baixados automaticamente.",
+                    "Metadados");
+                return;
+            }
+
+            int atualizados = 0;
+
+            PlayniteApi.Dialogs.ActivateGlobalProgress((progressArgs) =>
+            {
+                progressArgs.ProgressMaxValue = gameIds.Count;
+
+                foreach (var id in gameIds)
+                {
+                    if (progressArgs.CancelToken.IsCancellationRequested) break;
+
+                    var jogo = PlayniteApi.Database.Games.Get(id);
+                    progressArgs.Text = jogo != null
+                        ? string.Format("Baixando metadados: {0}", jogo.Name)
+                        : "Baixando metadados...";
+
+                    try
+                    {
+                        if (downloader.Download(id, progressArgs.CancelToken)) atualizados++;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex, string.Format("Falha ao baixar metadados do jogo {0}.", id));
+                    }
+
+                    progressArgs.CurrentProgressValue++;
+                }
+            }, new GlobalProgressOptions("Baixando metadados dos jogos importados...", true) { IsIndeterminate = false });
+
+            logger.Info(string.Format("Metadados preenchidos em {0} de {1} jogo(s) importado(s).", atualizados, gameIds.Count));
         }
 
         public override ISettings GetSettings(bool firstRun) { return settings; }

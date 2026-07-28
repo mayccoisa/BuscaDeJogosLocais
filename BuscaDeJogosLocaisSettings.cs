@@ -178,6 +178,9 @@ namespace BuscaDeJogosLocais
         private bool tagDriveAsFeature = false;
         public bool TagDriveAsFeature { get { return tagDriveAsFeature; } set { SetValue(ref tagDriveAsFeature, value); } }
 
+        private bool baixarMetadadosAposImportar = true;
+        public bool BaixarMetadadosAposImportar { get { return baixarMetadadosAposImportar; } set { SetValue(ref baixarMetadadosAposImportar, value); } }
+
         private bool escanearAutomaticamente = false;
         public bool EscanearAutomaticamente { get { return escanearAutomaticamente; } set { SetValue(ref escanearAutomaticamente, value); } }
 
@@ -293,6 +296,20 @@ namespace BuscaDeJogosLocais
         public RelayCommand<object> AddSavePatternCommand { get; private set; }
         public RelayCommand<object> RemoveSavePatternCommand { get; private set; }
 
+        // Atualização da própria extensão
+        private readonly UpdateChecker updateChecker;
+        public RelayCommand<object> CheckUpdateCommand { get; private set; }
+
+        public string VersaoInstaladaTexto
+        {
+            get { return string.Format("Versão instalada: {0}", updateChecker.CurrentVersion); }
+        }
+
+        public string RepositorioUrl
+        {
+            get { return updateChecker.ReleasesUrl; }
+        }
+
         public string UltimoScanTexto
         {
             get
@@ -330,6 +347,14 @@ namespace BuscaDeJogosLocais
             }
 
             Duplicatas = new ObservableCollection<DuplicateGameItem>();
+
+            updateChecker = new UpdateChecker(
+                plugin.PlayniteApi,
+                "mayccoisa/BuscaDeJogosLocais",
+                "186d9374-4173-420d-b17a-e2ace45bb317",
+                UpdateChecker.DefaultExtensionDir);
+
+            CheckUpdateCommand = new RelayCommand<object>((_) => updateChecker.CheckInteractive());
 
             // Inicializar Views de Coleção
             JogosEncontradosView = CollectionViewSource.GetDefaultView(JogosEncontrados);
@@ -570,22 +595,24 @@ namespace BuscaDeJogosLocais
                     return;
                 }
 
-                int importados = 0;
+                var idsImportados = new List<Guid>();
                 foreach (var jogo in selecionados)
                 {
-                    if (plugin.ImportarJogoManual(jogo))
+                    Guid novoId;
+                    if (plugin.ImportarJogoManual(jogo, out novoId))
                     {
-                        importados++;
+                        idsImportados.Add(novoId);
                         jogo.JaExiste = true;
                         jogo.Selecionado = false;
                     }
                 }
 
-                if (importados > 0)
+                if (idsImportados.Count > 0)
                 {
-                    plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogos importados com sucesso!", importados), "Sucesso");
+                    plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogos importados com sucesso!", idsImportados.Count), "Sucesso");
                     JogosEncontradosView.Refresh();
                     RecalcularEstatisticas();
+                    plugin.BaixarMetadadosDosImportados(idsImportados);
                 }
             });
 
