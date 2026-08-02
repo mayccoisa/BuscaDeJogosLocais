@@ -1,5 +1,6 @@
 using Playnite.SDK;
 using Playnite.SDK.Data;
+using Playnite.SDK.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -92,9 +93,13 @@ namespace BuscaDeJogosLocais
         public string PastaRaiz { get; set; }
         public string PastaMonitoradaPai { get; set; } // Adicionado para filtro/agrupamento
         
+        // Quando o scan viu esta pasta pela última vez ("—" enquanto nunca foi verificada).
+        private string ultimaVerificacao = "—";
+        public string UltimaVerificacao { get { return ultimaVerificacao; } set { SetValue(ref ultimaVerificacao, value); } }
+
         private bool jaExiste;
         public bool JaExiste { get { return jaExiste; } set { SetValue(ref jaExiste, value); OnPropertyChanged("Status"); } }
-        
+
         public string Status { get { return JaExiste ? "Já na Biblioteca" : "Pendente"; } }
     }
 
@@ -219,6 +224,13 @@ namespace BuscaDeJogosLocais
         public bool RemovidoDaBiblioteca { get; set; }
     }
 
+    // Carimbo da última vez que o scan confirmou que a pasta de um jogo estava no disco.
+    public class VerificacaoEntry : ObservableObject
+    {
+        public string PastaRaiz { get; set; }
+        public string Data { get; set; }   // dd/MM/yyyy HH:mm
+    }
+
     public class ExcludedEntry : ObservableObject
     {
         public string CaminhoExe { get; set; }
@@ -267,6 +279,10 @@ namespace BuscaDeJogosLocais
         // Padrões que identificam um "save" dentro da pasta de um jogo (nomes de pasta/arquivo ou extensões como ".sav").
         private ObservableCollection<string> padroesSave = new ObservableCollection<string>();
         public ObservableCollection<string> PadroesSave { get { return padroesSave; } set { SetValue(ref padroesSave, value); } }
+
+        // Última vez que cada pasta de jogo foi vista pelo scan.
+        private ObservableCollection<VerificacaoEntry> verificacoes = new ObservableCollection<VerificacaoEntry>();
+        public ObservableCollection<VerificacaoEntry> Verificacoes { get { return verificacoes; } set { SetValue(ref verificacoes, value); } }
 
         private ObservableCollection<DuplicateRemovalLogEntry> historicoDuplicatasRemovidas = new ObservableCollection<DuplicateRemovalLogEntry>();
         public ObservableCollection<DuplicateRemovalLogEntry> HistoricoDuplicatasRemovidas { get { return historicoDuplicatasRemovidas; } set { SetValue(ref historicoDuplicatasRemovidas, value); } }
@@ -1081,6 +1097,48 @@ namespace BuscaDeJogosLocais
             catch (Exception) { return path; }
         }
 
+        /// <summary>
+        /// Preenche a aba de busca com os jogos locais que JÁ estão na biblioteca, sem varrer o disco.
+        /// Assim a tela abre mostrando o que existe (e desde quando foi visto pela última vez) em vez
+        /// de uma lista vazia esperando um scan.
+        /// </summary>
+        public void CarregarJogosDaBiblioteca()
+        {
+            JogosEncontrados.Clear();
+
+            var jogosLocais = plugin.PlayniteApi.Database.Games
+                .Where(g => g.PluginId == plugin.Id && !string.IsNullOrEmpty(g.InstallDirectory))
+                .OrderBy(g => g.Name)
+                .ToList();
+
+            foreach (var jogo in jogosLocais)
+            {
+                string pastaPai = Settings.Pastas != null
+                    ? Settings.Pastas.FirstOrDefault(p => LocalGameUtils.IsUnderFolder(jogo.InstallDirectory, p))
+                    : null;
+
+                JogosEncontrados.Add(new ScannedGame
+                {
+                    Nome = jogo.Name,
+                    NomeOriginal = jogo.Name,
+                    Versao = jogo.Version == null ? string.Empty : jogo.Version,
+                    CaminhoExe = ExePrincipal(jogo),
+                    PastaRaiz = jogo.InstallDirectory,
+                    PastaMonitoradaPai = pastaPai != null ? pastaPai : "(fora das pastas monitoradas)",
+                    JaExiste = true,
+                    Selecionado = false,
+                    UltimaVerificacao = plugin.ObterUltimaVerificacao(jogo.InstallDirectory)
+                });
+            }
+        }
+
+        private static string ExePrincipal(Game jogo)
+        {
+            if (jogo.GameActions == null) return string.Empty;
+            var acao = jogo.GameActions.FirstOrDefault(a => a.Type == GameActionType.File && !string.IsNullOrEmpty(a.Path));
+            return acao != null ? acao.Path : string.Empty;
+        }
+
         public void RecalcularEstatisticas()
         {
             RecalcularResumoPastas();
@@ -1112,7 +1170,7 @@ namespace BuscaDeJogosLocais
             PastasEstatisticas = builder.ToString();
         }
 
-        public void BeginEdit() { editingClone = Serialization.GetClone(Settings); RecalcularEstatisticas(); OnPropertyChanged("OpcoesPastas"); }
+        public void BeginEdit() { editingClone = Serialization.GetClone(Settings); RecalcularEstatisticas(); CarregarJogosDaBiblioteca(); OnPropertyChanged("OpcoesPastas"); }
         public void CancelEdit() { Settings = editingClone; }
         public void EndEdit() { plugin.SavePluginSettings(Settings); plugin.UpdateWatchers(); }
         public bool VerifySettings(out List<string> errors) { errors = new List<string>(); return true; }

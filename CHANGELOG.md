@@ -6,6 +6,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.7.0] - 2026-08-02
+
+### Adicionado
+- **A aba "Busca e Importação" já abre com os jogos que estão na biblioteca**, em vez de uma lista vazia esperando um scan. Dá para ver de cara o que a extensão está gerenciando; o botão de escanear continua servindo para procurar novidades no disco.
+- Nova coluna **"Última verificação"**: a data do último scan que confirmou aquela pasta no disco. É a resposta para "esse jogo ainda estava lá quando?" — jogo nunca verificado aparece com "—".
+
+### Corrigido
+- **Legibilidade das tabelas no tema escuro.** O cabeçalho e as células das grades usavam as cores padrão do Windows (fundo claro com texto escuro), que ficavam ilegíveis sobre o tema escuro do Playnite. Agora todas as tabelas da extensão seguem a cor de texto do tema em uso, inclusive na linha selecionada.
+
+---
+
 ## [0.6.0] - 2026-08-02
 
 ### Adicionado

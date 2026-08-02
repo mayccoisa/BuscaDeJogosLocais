@@ -62,6 +62,7 @@ namespace BuscaDeJogosLocais
             {
                 if (settings.Settings.Pastas == null || settings.Settings.Pastas.Count == 0) return;
 
+                string agora = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
                 var gamesFoundMap = new Dictionary<string, ScannedGame>(StringComparer.OrdinalIgnoreCase);
                 var monitoredPaths = settings.Settings.Pastas.Select(p => NormalizePath(p)).ToList();
 
@@ -107,8 +108,11 @@ namespace BuscaDeJogosLocais
                                         PastaRaiz = gameRoot,
                                         PastaMonitoradaPai = monitoredPai,
                                         JaExiste = jaExiste,
-                                        Selecionado = !jaExiste
+                                        Selecionado = !jaExiste,
+                                        UltimaVerificacao = agora
                                     };
+
+                                    RegistrarVerificacao(gameRoot, agora);
                                 }
                             }
                         }
@@ -120,6 +124,8 @@ namespace BuscaDeJogosLocais
                 PlayniteApi.MainView.UIDispatcher.Invoke(() => {
                     foreach (var g in finalResults) listToPopulate.Add(g);
                 });
+
+                try { SavePluginSettings(settings.Settings); } catch (Exception) { }
             }, new GlobalProgressOptions(
                 string.IsNullOrEmpty(singleFolder)
                     ? "Buscando jogos locais em todas as pastas..."
@@ -130,6 +136,31 @@ namespace BuscaDeJogosLocais
         private bool IsExplosiveFile(string path)
         {
             return LocalGameUtils.IsExplosiveFile(path);
+        }
+
+        // Carimba a pasta como "vista agora". É o que permite responder, meses depois,
+        // "quando foi a última vez que este jogo estava mesmo no disco?".
+        private void RegistrarVerificacao(string pastaRaiz, string quando)
+        {
+            if (settings.Settings.Verificacoes == null)
+                settings.Settings.Verificacoes = new ObservableCollection<VerificacaoEntry>();
+
+            var existente = settings.Settings.Verificacoes
+                .FirstOrDefault(v => v.PastaRaiz != null && v.PastaRaiz.Equals(pastaRaiz, StringComparison.OrdinalIgnoreCase));
+
+            if (existente != null) existente.Data = quando;
+            else settings.Settings.Verificacoes.Add(new VerificacaoEntry { PastaRaiz = pastaRaiz, Data = quando });
+        }
+
+        /// <summary>Data do último scan que confirmou esta pasta, ou "—" se nunca foi verificada.</summary>
+        public string ObterUltimaVerificacao(string pastaRaiz)
+        {
+            if (string.IsNullOrEmpty(pastaRaiz) || settings.Settings.Verificacoes == null) return "—";
+
+            var entrada = settings.Settings.Verificacoes
+                .FirstOrDefault(v => v.PastaRaiz != null && v.PastaRaiz.Equals(pastaRaiz, StringComparison.OrdinalIgnoreCase));
+
+            return entrada != null ? entrada.Data : "—";
         }
 
         private bool IsExcluded(string caminhoExe)

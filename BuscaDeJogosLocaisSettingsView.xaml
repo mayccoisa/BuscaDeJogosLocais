@@ -8,7 +8,39 @@
              d:DesignHeight="600" d:DesignWidth="800">
     <UserControl.Resources>
         <local:InverseBooleanConverter x:Key="InverseBooleanConverter" />
-        
+
+        <!-- O DataGrid do WPF traz cabeçalho claro com texto escuro, que fica ilegível sobre o
+             tema escuro do Playnite. Estes estilos implícitos valem para todas as grades da tela
+             e puxam a cor do tema em uso (TextBrush), em vez de cor fixa. -->
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#26FFFFFF" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="BorderBrush" Value="#33FFFFFF" />
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4,3" />
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#33FFFFFF" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+
         <!-- ESTILO PARA AGRUPAMENTO NO DATAGRID -->
         <Style x:Key="GroupHeaderStyle" TargetType="{x:Type GroupItem}">
             <Setter Property="Template">
@@ -17,9 +49,9 @@
                         <Expander IsExpanded="True" Background="#11FFFFFF" BorderBrush="#33FFFFFF" BorderThickness="0,0,0,1" Margin="0,0,0,5">
                             <Expander.Header>
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="📁 Origem: " FontWeight="Bold" Opacity="0.7" />
+                                    <TextBlock Text="📁 Origem: " FontWeight="Bold" Opacity="0.7" Foreground="{DynamicResource TextBrush}" />
                                     <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="Gold" />
-                                    <TextBlock Text="{Binding ItemCount, StringFormat=' ({0} itens)'}" Opacity="0.5" Margin="5,0,0,0" />
+                                    <TextBlock Text="{Binding ItemCount, StringFormat=' ({0} itens)'}" Opacity="0.5" Margin="5,0,0,0" Foreground="{DynamicResource TextBrush}" />
                                 </StackPanel>
                             </Expander.Header>
                             <ItemsPresenter />
@@ -187,7 +219,11 @@
 
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
                         <Button Content="{Binding ScanButtonLabel}" Command="{Binding ScanNowCommand}" Padding="15,8" FontWeight="Bold" />
-                        <TextBlock Text="{Binding ScanHintText}" VerticalAlignment="Center" Margin="15,0,0,0" Opacity="0.7" />
+                        <TextBlock Text="{Binding ScanHintText}" VerticalAlignment="Center" Margin="15,0,0,0" Opacity="0.7"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <TextBlock Text="A lista abre com os jogos que já estão na biblioteca; escaneie para procurar novidades no disco."
+                                   VerticalAlignment="Center" Margin="15,0,0,0" Opacity="0.6" FontStyle="Italic" FontSize="11"
+                                   Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap" />
                     </StackPanel>
 
                     <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
@@ -230,6 +266,16 @@
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Margin="5,4"
                                                        Foreground="{DynamicResource TextBrush}" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTemplateColumn Header="Última verificação" Width="150" MinWidth="130" SortMemberPath="UltimaVerificacao">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding UltimaVerificacao}" VerticalAlignment="Center" Margin="5,4"
+                                                       Foreground="{DynamicResource TextBrush}" Opacity="0.8"
+                                                       ToolTip="Data do último scan que confirmou esta pasta no disco" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
