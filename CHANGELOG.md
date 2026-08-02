@@ -6,6 +6,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.5.1] - 2026-08-02
+
+### Corrigido
+- **A busca de capa agora traz resultado**. A extensão pedia os metadados no modo "download em massa", em que a fonte (IGDB e afins) tenta adivinhar o jogo sozinha e devolve vazio quando não tem certeza do título — era por isso que a capa só vinha quando você rodava o "Download metadata" do Playnite na mão.
+- A busca de metadados depois de renomear já não nasce atrás da janela de prévia: ela só começa quando você fecha a prévia.
+
+### Alterado
+- Quando algum jogo continua sem capa depois da busca automática, a extensão avisa quantos foram e oferece **uma segunda tentativa no modo manual** — o mesmo do "Download metadata" do Playnite, em que a fonte pode abrir uma janela para você escolher o jogo certo. Fica sempre como escolha sua, nunca automático.
+
+---
+
 ## [0.5.0] - 2026-08-02
 
 ### Adicionado

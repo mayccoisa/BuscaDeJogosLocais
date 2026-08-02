@@ -394,6 +394,34 @@ namespace BuscaDeJogosLocais
                 return;
             }
 
+            int atualizados = RodarDownloadMetadados(downloader, gameIds, false);
+            logger.Info(string.Format("Metadados preenchidos em {0} de {1} jogo(s).", atualizados, gameIds.Count));
+
+            // Passada 1 é auto-match silencioso: o provedor devolve vazio quando não tem certeza do
+            // título. Quem sobrou sem capa só resolve no modo manual, o mesmo da janela de edição —
+            // e esse pode abrir uma janela por jogo, então é escolha do usuário, nunca automático.
+            var semCapa = gameIds
+                .Select(id => PlayniteApi.Database.Games.Get(id))
+                .Where(g => g != null && string.IsNullOrEmpty(g.CoverImage))
+                .Select(g => g.Id)
+                .ToList();
+
+            if (semCapa.Count == 0) return;
+
+            var pergunta = string.Format(
+                "{0} jogo(s) continuaram sem capa: as fontes não encontraram correspondência automática para o título.\n\n" +
+                "Quer tentar de novo no modo manual? É o mesmo modo do \"Download metadata\" do Playnite, em que a fonte pode abrir uma janela para você escolher o jogo certo.",
+                semCapa.Count);
+
+            if (PlayniteApi.Dialogs.ShowMessage(pergunta, "Metadados", System.Windows.MessageBoxButton.YesNo)
+                != System.Windows.MessageBoxResult.Yes) return;
+
+            int manuais = RodarDownloadMetadados(downloader, semCapa, true);
+            logger.Info(string.Format("Metadados manuais preenchidos em {0} de {1} jogo(s).", manuais, semCapa.Count));
+        }
+
+        private int RodarDownloadMetadados(MetadataDownloader downloader, List<Guid> gameIds, bool interativo)
+        {
             int atualizados = 0;
 
             PlayniteApi.Dialogs.ActivateGlobalProgress((progressArgs) =>
@@ -411,7 +439,7 @@ namespace BuscaDeJogosLocais
 
                     try
                     {
-                        if (downloader.Download(id, progressArgs.CancelToken)) atualizados++;
+                        if (downloader.Download(id, progressArgs.CancelToken, interativo)) atualizados++;
                     }
                     catch (Exception ex)
                     {
@@ -420,9 +448,11 @@ namespace BuscaDeJogosLocais
 
                     progressArgs.CurrentProgressValue++;
                 }
-            }, new GlobalProgressOptions("Baixando metadados dos jogos importados...", true) { IsIndeterminate = false });
+            }, new GlobalProgressOptions(
+                interativo ? "Buscando metadados (modo manual)..." : "Baixando metadados dos jogos...", true)
+            { IsIndeterminate = false });
 
-            logger.Info(string.Format("Metadados preenchidos em {0} de {1} jogo(s) importado(s).", atualizados, gameIds.Count));
+            return atualizados;
         }
 
         public override ISettings GetSettings(bool firstRun) { return settings; }
@@ -705,14 +735,29 @@ namespace BuscaDeJogosLocais
             window.Width = 950;
             window.Height = 600;
             window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            window.Content = new RenamePreviewWindow(itens, (selecionados) => AplicarRenomeacoes(selecionados));
+            // A renomeação grava na hora; a busca de metadados só roda DEPOIS que a modal fecha,
+            // senão a barra de progresso e os diálogos da fonte nascem atrás da janela.
+            var renomeados = new List<Guid>();
+            window.Content = new RenamePreviewWindow(itens, (selecionados) => renomeados.AddRange(AplicarRenomeacoes(selecionados)));
             window.ShowDialog();
+
+            if (renomeados.Count == 0) return;
+
+            var resposta = PlayniteApi.Dialogs.ShowMessage(
+                string.Format("{0} jogo(s) atualizados.\n\nQuer buscar capa e metadados agora para esses jogos, com o nome já corrigido?", renomeados.Count),
+                "Limpar Nomes", System.Windows.MessageBoxButton.YesNo);
+
+            if (resposta == System.Windows.MessageBoxResult.Yes)
+            {
+                BaixarMetadadosDosImportados(renomeados, true);
+            }
         }
 
         // Grava as renomeações confirmadas na prévia. Só toca no que o usuário deixou marcado.
-        private void AplicarRenomeacoes(List<RenameItem> selecionados)
+        // Devolve os ids efetivamente alterados, para a busca de metadados rodar depois.
+        private List<Guid> AplicarRenomeacoes(List<RenameItem> selecionados)
         {
-            int aplicados = 0;
+            var alterados = new List<Guid>();
 
             foreach (var item in selecionados)
             {
@@ -738,7 +783,7 @@ namespace BuscaDeJogosLocais
                     if (mudou)
                     {
                         PlayniteApi.Database.Games.Update(jogo);
-                        aplicados++;
+                        alterados.Add(jogo.Id);
                     }
                 }
                 catch (Exception ex)
@@ -747,22 +792,7 @@ namespace BuscaDeJogosLocais
                 }
             }
 
-            if (aplicados == 0)
-            {
-                PlayniteApi.Dialogs.ShowMessage("Nenhum jogo alterado.", "Limpar Nomes");
-                return;
-            }
-
-            // Com o nome corrigido, vale reofertar a busca de capa/metadados: é justamente
-            // o nome sujo que fazia as fontes (IGDB e cia) não acharem nada na importação.
-            var resposta = PlayniteApi.Dialogs.ShowMessage(
-                string.Format("{0} jogo(s) atualizados.\n\nQuer buscar capa e metadados agora para esses jogos, com o nome já corrigido?", aplicados),
-                "Limpar Nomes", System.Windows.MessageBoxButton.YesNo);
-
-            if (resposta == System.Windows.MessageBoxResult.Yes)
-            {
-                BaixarMetadadosDosImportados(selecionados.Select(i => i.GameId).ToList(), true);
-            }
+            return alterados;
         }
 
         public void CheckLibraryIntegrity()

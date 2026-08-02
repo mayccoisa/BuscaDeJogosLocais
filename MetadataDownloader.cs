@@ -56,8 +56,14 @@ namespace BuscaDeJogosLocais
             get { return string.Join(", ", providers.Select(p => p.Name).ToArray()); }
         }
 
-        /// <summary>Preenche os metadados de um jogo. Devolve true se algo foi alterado.</summary>
-        public bool Download(Guid gameId, CancellationToken cancelToken)
+        /// <summary>
+        /// Preenche os metadados de um jogo. Devolve true se algo foi alterado.
+        /// Com 'interativo' em false a requisição vai como download em massa: o provedor faz
+        /// auto-match silencioso e devolve vazio quando não tem certeza do jogo. Com true ela vai
+        /// como requisição manual (o mesmo modo da janela de edição do Playnite), em que o provedor
+        /// pode pedir ajuda para escolher o jogo certo — é o que resolve os títulos que não casam sozinhos.
+        /// </summary>
+        public bool Download(Guid gameId, CancellationToken cancelToken, bool interativo = false)
         {
             var game = api.Database.Games.Get(gameId);
             if (game == null)
@@ -83,7 +89,7 @@ namespace BuscaDeJogosLocais
                 OnDemandMetadataProvider onDemand = null;
                 try
                 {
-                    onDemand = provider.GetMetadataProvider(new MetadataRequestOptions(game, true));
+                    onDemand = provider.GetMetadataProvider(new MetadataRequestOptions(game, !interativo));
                     if (onDemand == null)
                     {
                         continue;
