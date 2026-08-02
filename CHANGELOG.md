@@ -6,6 +6,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.7.2] - 2026-08-02
+
+### Alterado
+- O cabeçalho de cada pasta na lista de busca passa a mostrar **"17/20 pastas"** em vez de "17 itens": quantos jogos daquela pasta estão na lista contra quantas pastas existem no disco. O que falta para fechar a conta é exatamente o que ficou de fora — mesma leitura da aba "Pastas Monitoradas". Vale na tela de configurações e na janela do scan.
+
+### Corrigido
+- **A tabela de resumo das pastas voltou a aparecer.** As caixas de configuração no topo da aba consumiam toda a altura e a tabela ficava com zero pixel, sumindo da tela sem aviso. Agora a aba rola e a tabela tem altura própria.
+- O resumo em texto que ficava embaixo virou uma linha de total, já que o detalhe por pasta agora está na tabela.
+
+---
+
 ## [0.7.1] - 2026-08-02
 
 ### Corrigido

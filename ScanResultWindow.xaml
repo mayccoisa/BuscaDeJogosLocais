@@ -8,6 +8,7 @@
              d:DesignHeight="550" d:DesignWidth="900">
     <UserControl.Resources>
         <local:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+        <local:GroupCountConverter x:Key="GroupCountConverter" />
         <!-- Cabecalho/celulas seguindo o tema do Playnite (o padrao do WPF fica ilegivel no escuro). -->
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#26FFFFFF" />
@@ -43,7 +44,15 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="📁 Origem: " FontWeight="Bold" Opacity="0.7" />
                                     <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="Gold" />
-                                    <TextBlock Text="{Binding ItemCount, StringFormat=' ({0} itens)'}" Opacity="0.5" Margin="5,0,0,0" />
+                                    <TextBlock Opacity="0.6" Margin="5,0,0,0"
+                                               ToolTip="Jogos encontrados nesta pasta / total de pastas no disco">
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{StaticResource GroupCountConverter}">
+                                                <Binding Path="Name" />
+                                                <Binding Path="ItemCount" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
                                 </StackPanel>
                             </Expander.Header>
                             <ItemsPresenter />

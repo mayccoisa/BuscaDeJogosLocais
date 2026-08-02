@@ -74,7 +74,12 @@ namespace BuscaDeJogosLocais
                 {
                     if (Directory.Exists(pasta))
                     {
-                        try 
+                        // Guarda o denominador ("17/20") também quando o scan roda pelo menu,
+                        // sem a tela de configurações ter sido aberta.
+                        try { PastaTotais.Registrar(pasta, Directory.GetDirectories(pasta).Length); }
+                        catch (Exception) { }
+
+                        try
                         {
                             var files = SafeEnumerateFiles(pasta, "*.exe", progressArgs.CancelToken);
                             foreach (var file in files)

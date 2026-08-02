@@ -40,6 +40,55 @@ namespace BuscaDeJogosLocais
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) { return !(bool)value; }
     }
 
+    /// <summary>
+    /// Quantas subpastas cada pasta monitorada tem no disco. Preenchido no cálculo do resumo e
+    /// consultado pelo cabeçalho de grupo da lista de busca, para ele poder dizer "17/20" em vez
+    /// de só "17 itens" — o denominador é o que revela o que ficou de fora.
+    /// </summary>
+    public static class PastaTotais
+    {
+        private static readonly Dictionary<string, int> totais =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        public static void Registrar(string pasta, int totalSubpastas)
+        {
+            if (string.IsNullOrEmpty(pasta)) return;
+            totais[pasta.TrimEnd('\\', '/')] = totalSubpastas;
+        }
+
+        public static void Limpar() { totais.Clear(); }
+
+        /// <summary>Total conhecido, ou -1 quando a pasta nunca foi resumida.</summary>
+        public static int Obter(string pasta)
+        {
+            if (string.IsNullOrEmpty(pasta)) return -1;
+            int total;
+            return totais.TryGetValue(pasta.TrimEnd('\\', '/'), out total) ? total : -1;
+        }
+    }
+
+    /// <summary>Monta o rótulo "17/20 pastas" do cabeçalho de grupo (nome do grupo + itens do grupo).</summary>
+    public class GroupCountConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values == null || values.Length < 2) return string.Empty;
+
+            var pasta = values[0] as string;
+            int itens = values[1] is int ? (int)values[1] : 0;
+
+            int total = PastaTotais.Obter(pasta);
+            if (total < 0 || total < itens) return string.Format(" ({0} itens)", itens);
+
+            return string.Format(" ({0}/{1} pastas)", itens, total);
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
     public class ObservableObject : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler PropertyChanged;
@@ -358,6 +407,10 @@ namespace BuscaDeJogosLocais
 
         private string pastasEstatisticas = "Escaneie para ver as estatísticas...";
         public string PastasEstatisticas { get { return pastasEstatisticas; } set { SetValue(ref pastasEstatisticas, value); } }
+
+        // Uma linha de total, agora que o detalhe por pasta vive na grade acima.
+        private string pastasResumoTexto = "";
+        public string PastasResumoTexto { get { return pastasResumoTexto; } set { SetValue(ref pastasResumoTexto, value); } }
         
         public RelayCommand<object> AddFolderCommand { get; private set; }
         public RelayCommand<object> ScanNowCommand { get; private set; }
@@ -1006,6 +1059,7 @@ namespace BuscaDeJogosLocais
         public void RecalcularResumoPastas()
         {
             PastasResumo.Clear();
+            PastaTotais.Limpar();
 
             if (Settings.Pastas == null) return;
 
@@ -1057,6 +1111,7 @@ namespace BuscaDeJogosLocais
                     catch (Exception) { subpastas = new string[0]; }
 
                     resumo.TotalSubpastas = subpastas.Length;
+                    PastaTotais.Registrar(pasta, subpastas.Length);
 
                     foreach (var sub in subpastas)
                     {
@@ -1107,6 +1162,14 @@ namespace BuscaDeJogosLocais
                 resumo.NaBiblioteca -= resumo.ComProblema;
                 PastasResumo.Add(resumo);
             }
+
+            PastasResumoTexto = string.Format(
+                "Total: {0} jogo(s) na biblioteca · {1} pasta(s) fora · {2} com pasta ausente · {3} ignorado(s), em {4} pasta(s) monitorada(s).",
+                PastasResumo.Sum(p => p.NaBiblioteca),
+                PastasResumo.Sum(p => p.NaoImportados),
+                PastasResumo.Sum(p => p.ComProblema),
+                PastasResumo.Sum(p => p.Ignorados),
+                Settings.Pastas.Count);
         }
 
         private static string SafeFolderName(string path)

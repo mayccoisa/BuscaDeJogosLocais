@@ -8,6 +8,7 @@
              d:DesignHeight="600" d:DesignWidth="800">
     <UserControl.Resources>
         <local:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+        <local:GroupCountConverter x:Key="GroupCountConverter" />
 
         <!-- O DataGrid do WPF traz cabeçalho claro com texto escuro, que fica ilegível sobre o
              tema escuro do Playnite. Estes estilos implícitos valem para todas as grades da tela
@@ -51,7 +52,15 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="📁 Origem: " FontWeight="Bold" Opacity="0.7" Foreground="{DynamicResource TextBrush}" />
                                     <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="Gold" />
-                                    <TextBlock Text="{Binding ItemCount, StringFormat=' ({0} itens)'}" Opacity="0.5" Margin="5,0,0,0" Foreground="{DynamicResource TextBrush}" />
+                                    <TextBlock Opacity="0.6" Margin="5,0,0,0" Foreground="{DynamicResource TextBrush}"
+                                               ToolTip="Jogos desta pasta na biblioteca / total de pastas encontradas no disco">
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{StaticResource GroupCountConverter}">
+                                                <Binding Path="Name" />
+                                                <Binding Path="ItemCount" />
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
                                 </StackPanel>
                             </Expander.Header>
                             <ItemsPresenter />
@@ -66,12 +75,15 @@
         <TabControl Background="Transparent" BorderThickness="0">
             <!-- ABA 1: CONFIGURAÇÕES E MONITORAMENTO -->
             <TabItem Header="Pastas Monitoradas">
+                <!-- Sem o ScrollViewer, as caixas de cima comem a altura e a grade de pastas
+                     fica com zero pixel — some da tela sem nenhum aviso. -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <Grid Margin="10,15,10,10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
@@ -143,7 +155,7 @@
                                    TextWrapping="Wrap" FontStyle="Italic" Opacity="0.7" FontSize="11" Margin="0,6,0,0" />
                     </StackPanel>
 
-                    <DataGrid Grid.Row="3" ItemsSource="{Binding PastasResumo}"
+                    <DataGrid Grid.Row="3" ItemsSource="{Binding PastasResumo}" Height="280"
                               AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
                               Background="#22FFFFFF" RowBackground="Transparent" AlternatingRowBackground="#11FFFFFF"
                               GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#22FFFFFF"
@@ -190,10 +202,11 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Border Grid.Row="4" Background="#11FFFFFF" Padding="10" CornerRadius="5">
-                        <TextBlock Text="{Binding PastasEstatisticas}" TextWrapping="Wrap" />
-                    </Border>
+                    <!-- O resumo em texto virou a grade acima; ficou só o total, numa linha. -->
+                    <TextBlock Grid.Row="4" Text="{Binding PastasResumoTexto}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextBrush}" Opacity="0.7" FontSize="11" Margin="0,4,0,0" />
                 </Grid>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ABA 2: DESCOBERTA E IMPORTAÇÃO -->
