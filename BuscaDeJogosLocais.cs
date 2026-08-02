@@ -93,9 +93,16 @@ namespace BuscaDeJogosLocais
                                         g.InstallDirectory != null && 
                                         NormalizePath(g.InstallDirectory).Equals(NormalizePath(gameRoot), StringComparison.OrdinalIgnoreCase));
 
+                                    string nomePasta = new DirectoryInfo(gameRoot).Name;
+                                    string versaoDetectada;
+                                    string nomeLimpo = LocalGameUtils.CleanGameName(nomePasta, out versaoDetectada);
+                                    if (!settings.Settings.LimparNomeDaPasta) nomeLimpo = nomePasta;
+
                                     gamesFoundMap[gameRoot] = new ScannedGame
                                     {
-                                        Nome = new DirectoryInfo(gameRoot).Name,
+                                        Nome = nomeLimpo,
+                                        NomeOriginal = nomePasta,
+                                        Versao = versaoDetectada == null ? string.Empty : versaoDetectada,
                                         CaminhoExe = file,
                                         PastaRaiz = gameRoot,
                                         PastaMonitoradaPai = monitoredPai,
@@ -335,7 +342,12 @@ namespace BuscaDeJogosLocais
                     new GameAction { Type = GameActionType.File, Path = scanned.CaminhoExe, Name = "Jogar", WorkingDir = "{InstallDir}" } 
                 }
             };
-            
+
+            if (settings.Settings.GuardarVersaoDetectada && !string.IsNullOrEmpty(scanned.Versao))
+            {
+                game.Version = scanned.Versao;
+            }
+
             var tag = PlayniteApi.Database.Tags.Add("Importado Local");
             game.TagIds = new List<Guid> { tag.Id };
 
@@ -366,9 +378,9 @@ namespace BuscaDeJogosLocais
         /// usando as fontes de metadados instaladas no Playnite. Respeita a opção da tela de configurações
         /// e nunca sobrescreve campo que o jogo já tenha preenchido.
         /// </summary>
-        public void BaixarMetadadosDosImportados(List<Guid> gameIds)
+        public void BaixarMetadadosDosImportados(List<Guid> gameIds, bool forcar = false)
         {
-            if (!settings.Settings.BaixarMetadadosAposImportar) return;
+            if (!forcar && !settings.Settings.BaixarMetadadosAposImportar) return;
             if (gameIds == null || gameIds.Count == 0) return;
 
             var downloader = new MetadataDownloader(PlayniteApi);
@@ -626,10 +638,131 @@ namespace BuscaDeJogosLocais
 
             yield return new MainMenuItem
             {
+                Description = "Limpar Nomes dos Jogos Locais",
+                MenuSection = "@Local",
+                Action = (mainMenuItemArgs) => LimparNomesDosJogosLocais()
+            };
+
+            yield return new MainMenuItem
+            {
                 Description = "Verificar Integridade da Biblioteca",
                 MenuSection = "@Local",
                 Action = (mainMenuItemArgs) => CheckLibraryIntegrity()
             };
+        }
+
+        /// <summary>
+        /// Reaplica a limpeza de nome (e a versão detectada) nos jogos que já foram importados
+        /// por esta extensão. Só mexe em jogo cujo nome realmente muda; mostra prévia antes de gravar.
+        /// </summary>
+        public void LimparNomesDosJogosLocais()
+        {
+            var jogos = PlayniteApi.Database.Games.Where(g => g.PluginId == Id).ToList();
+            var itens = new ObservableCollection<RenameItem>();
+
+            foreach (var jogo in jogos)
+            {
+                // A versão sai do nome da pasta quando existe; o nome do jogo é o fallback.
+                string baseNome = jogo.Name;
+                string origem = !string.IsNullOrEmpty(jogo.InstallDirectory) && Directory.Exists(jogo.InstallDirectory)
+                    ? new DirectoryInfo(jogo.InstallDirectory).Name
+                    : jogo.Name;
+
+                string versaoPasta;
+                LocalGameUtils.CleanGameName(origem, out versaoPasta);
+
+                string versaoNome;
+                string limpo = LocalGameUtils.CleanGameName(baseNome, out versaoNome);
+                string versao = versaoNome != null ? versaoNome : versaoPasta;
+
+                bool mudaNome = !string.IsNullOrEmpty(limpo) && limpo != jogo.Name;
+                bool ganhaVersao = !string.IsNullOrEmpty(versao) && string.IsNullOrEmpty(jogo.Version);
+
+                if (!mudaNome && !ganhaVersao) continue;
+
+                itens.Add(new RenameItem
+                {
+                    GameId = jogo.Id,
+                    NomeAtual = jogo.Name,
+                    NomeNovo = string.IsNullOrEmpty(limpo) ? jogo.Name : limpo,
+                    Versao = string.IsNullOrEmpty(versao) ? (jogo.Version == null ? string.Empty : jogo.Version) : versao,
+                    Selecionado = true
+                });
+            }
+
+            if (itens.Count == 0)
+            {
+                PlayniteApi.Dialogs.ShowMessage("Nenhum jogo local precisa de ajuste de nome.", "Limpar Nomes");
+                return;
+            }
+
+            var window = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+            {
+                ShowMaximizeButton = true,
+                ShowMinimizeButton = false
+            });
+            window.Title = string.Format("Limpar Nomes ({0})", itens.Count);
+            window.Width = 950;
+            window.Height = 600;
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            window.Content = new RenamePreviewWindow(itens, (selecionados) => AplicarRenomeacoes(selecionados));
+            window.ShowDialog();
+        }
+
+        // Grava as renomeações confirmadas na prévia. Só toca no que o usuário deixou marcado.
+        private void AplicarRenomeacoes(List<RenameItem> selecionados)
+        {
+            int aplicados = 0;
+
+            foreach (var item in selecionados)
+            {
+                var jogo = PlayniteApi.Database.Games.Get(item.GameId);
+                if (jogo == null) continue;
+
+                try
+                {
+                    bool mudou = false;
+
+                    if (!string.IsNullOrEmpty(item.NomeNovo) && item.NomeNovo != jogo.Name)
+                    {
+                        jogo.Name = item.NomeNovo.Trim();
+                        mudou = true;
+                    }
+
+                    if (!string.IsNullOrEmpty(item.Versao) && item.Versao != jogo.Version)
+                    {
+                        jogo.Version = item.Versao.Trim();
+                        mudou = true;
+                    }
+
+                    if (mudou)
+                    {
+                        PlayniteApi.Database.Games.Update(jogo);
+                        aplicados++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(ex, string.Format("Falha ao renomear o jogo {0}", item.NomeAtual));
+                }
+            }
+
+            if (aplicados == 0)
+            {
+                PlayniteApi.Dialogs.ShowMessage("Nenhum jogo alterado.", "Limpar Nomes");
+                return;
+            }
+
+            // Com o nome corrigido, vale reofertar a busca de capa/metadados: é justamente
+            // o nome sujo que fazia as fontes (IGDB e cia) não acharem nada na importação.
+            var resposta = PlayniteApi.Dialogs.ShowMessage(
+                string.Format("{0} jogo(s) atualizados.\n\nQuer buscar capa e metadados agora para esses jogos, com o nome já corrigido?", aplicados),
+                "Limpar Nomes", System.Windows.MessageBoxButton.YesNo);
+
+            if (resposta == System.Windows.MessageBoxResult.Yes)
+            {
+                BaixarMetadadosDosImportados(selecionados.Select(i => i.GameId).ToList(), true);
+            }
         }
 
         public void CheckLibraryIntegrity()

@@ -6,6 +6,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.5.0] - 2026-08-02
+
+### Adicionado
+- **Nome limpo na importação**: o nome da pasta de release deixa de virar o nome do jogo. "STARDUST.Wish.of.Witch.v20260729-P2P" entra na biblioteca como **"Stardust Wish of Witch"**, com versão, grupo de release, "Repack", "MULTi9" e afins removidos. Hífen legítimo do título é preservado ("Pac-Man World 2 Re-Pac"), assim como siglas ("S.T.A.L.K.E.R."), numerais romanos ("Fable II") e camelCase ("EverSiege").
+- **A versão não se perde**: o que estava no nome da pasta (v1.00.1, v20260729, Build 12345, Update 3) vai para o campo nativo **Versão** do jogo no Playnite, onde dá para consultar e filtrar.
+- **Prévia antes de importar**: na tela de resultados do scan, o nome e a versão agora são **editáveis** direto na tabela, e o nome original da pasta aparece ao passar o mouse. Nada é gravado antes de você conferir.
+- **Limpeza retroativa**: novo item de menu **Local › Limpar Nomes dos Jogos Locais** (e botão equivalente nas configurações) analisa os jogos já importados e abre uma janela de prévia com "nome atual → nome novo", item a item, editável e desmarcável. Depois de aplicar, a extensão oferece buscar capa e metadados de novo — é justamente o nome sujo que fazia as fontes não acharem nada na importação.
+- Duas opções novas nas configurações, em **Nome e versão**: *Limpar o nome da pasta ao importar* e *Guardar a versão detectada*, ambas ligadas por padrão.
+
+---
+
 ## [0.4.0] - 2026-07-28
 
 ### Adicionado

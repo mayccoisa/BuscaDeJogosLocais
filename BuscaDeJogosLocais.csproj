@@ -59,6 +59,9 @@
     <Compile Include="ScanResultWindow.xaml.cs">
       <DependentUpon>ScanResultWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="RenamePreviewWindow.xaml.cs">
+      <DependentUpon>RenamePreviewWindow.xaml</DependentUpon>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Page Include="BuscaDeJogosLocaisSettingsView.xaml">
@@ -70,6 +73,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="ScanResultWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="RenamePreviewWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>

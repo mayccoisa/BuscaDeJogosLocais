@@ -39,7 +39,7 @@
         <!-- Cabeçalho -->
         <StackPanel Grid.Row="0" Margin="0,0,0,10">
             <TextBlock Text="{Binding HeaderText}" FontSize="14" FontWeight="Bold" Foreground="White" />
-            <TextBlock Text="Selecione os jogos que deseja importar. Use 🚫 para ignorar permanentemente."
+            <TextBlock Text="Selecione os jogos que deseja importar. O nome e a versão podem ser editados na tabela. Use 🚫 para ignorar permanentemente."
                        FontStyle="Italic" Opacity="0.6" FontSize="11" Margin="0,4,0,0" />
         </StackPanel>
 
@@ -76,7 +76,21 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTextColumn Header="Jogo" Binding="{Binding Nome}" Width="*" IsReadOnly="True" />
+                <DataGridTextColumn Header="Jogo" Binding="{Binding Nome, UpdateSourceTrigger=PropertyChanged}" Width="*">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="ToolTip" Value="{Binding NomeOriginal}" />
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <DataGridTextColumn Header="Versão" Binding="{Binding Versao, UpdateSourceTrigger=PropertyChanged}" Width="110">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Opacity" Value="0.7" />
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
 
                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="130" IsReadOnly="True">
                     <DataGridTextColumn.ElementStyle>

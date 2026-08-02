@@ -61,6 +61,21 @@
                                     Command="{Binding ApplyLocalSourceToExistingCommand}"
                                     Padding="10,5" HorizontalAlignment="Left" Margin="25,0,0,0" Cursor="Hand" />
 
+                            <TextBlock Text="Nome e versão" FontSize="14" FontWeight="Bold" Foreground="Gold" Margin="0,18,0,6" />
+                            <CheckBox Content="Limpar o nome da pasta ao importar"
+                                      IsChecked="{Binding Settings.LimparNomeDaPasta}"
+                                      VerticalContentAlignment="Center" Margin="0,5,0,5" />
+                            <TextBlock Text="Remove versão, grupo de release e ruído do nome da pasta. Ex.: &quot;STARDUST.Wish.of.Witch.v20260729-P2P&quot; vira &quot;STARDUST Wish of Witch&quot;. O nome fica editável na tela de resultados antes de importar."
+                                       TextWrapping="Wrap" FontStyle="Italic" Opacity="0.7" Margin="25,0,0,10" FontSize="11" />
+                            <CheckBox Content="Guardar a versão detectada no campo 'Versão' do jogo"
+                                      IsChecked="{Binding Settings.GuardarVersaoDetectada}"
+                                      VerticalContentAlignment="Center" Margin="0,5,0,5" />
+                            <TextBlock Text="A versão que estava no nome da pasta (v1.00.1, Build 12345, Update 3) não se perde: vai para o campo nativo de versão do Playnite."
+                                       TextWrapping="Wrap" FontStyle="Italic" Opacity="0.7" Margin="25,0,0,10" FontSize="11" />
+                            <Button Content="🧹 Limpar Nomes dos Jogos Já Importados"
+                                    Command="{Binding LimparNomesExistentesCommand}"
+                                    Padding="10,5" HorizontalAlignment="Left" Margin="25,0,0,0" Cursor="Hand" />
+
                             <TextBlock Text="Metadados" FontSize="14" FontWeight="Bold" Foreground="Gold" Margin="0,18,0,6" />
                             <CheckBox Content="Baixar metadados dos jogos logo após importar"
                                       IsChecked="{Binding Settings.BaixarMetadadosAposImportar}"

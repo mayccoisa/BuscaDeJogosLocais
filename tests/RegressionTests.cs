@@ -109,6 +109,66 @@ class RegressionTests
         Check("substring parcial NAO casa (match exato)",
             !LocalGameUtils.MatchesSavePattern(new List<string> { "savescreenshots" }, new List<string>(), new List<string> { "save" }));
 
+        // ---- CleanGameName / ExtractVersion ----
+        Console.WriteLine("[CleanGameName]");
+        string v;
+        Eq("tira versao e grupo", "Stardust Wish of Witch",
+            LocalGameUtils.CleanGameName("STARDUST.Wish.of.Witch.v20260729-P2P", out v));
+        Eq("versao de data extraida", "20260729", v);
+
+        Eq("versao curta", "Starbites", LocalGameUtils.CleanGameName("STARBITES.v1.00.1-P2P", out v));
+        Eq("versao curta extraida", "1.00.1", v);
+
+        Eq("preserva hifen do titulo", "Pac-Man World 2 Re-Pac",
+            LocalGameUtils.CleanGameName("PAC-MAN.WORLD.2.Re-PAC.v20260522-P2P", out v));
+
+        Eq("grupo sem versao", "Forensics Crime Scene Detective",
+            LocalGameUtils.CleanGameName("Forensics.Crime.Scene.Detective-GoldBerg", out v));
+        Check("sem versao devolve null", v == null);
+
+        Eq("versao com tres partes", "EverSiege Untold Ages",
+            LocalGameUtils.CleanGameName("EverSiege.Untold.Ages.v1.2.4-P2P", out v));
+        Eq("versao com tres partes extraida", "1.2.4", v);
+
+        Eq("build vira versao", "Some Game",
+            LocalGameUtils.CleanGameName("Some.Game.Build.14209871-TENOKE", out v));
+        Eq("build extraido", "Build 14209871", v);
+
+        Eq("update vira versao", "Another Game",
+            LocalGameUtils.CleanGameName("Another.Game.v1.0.Update.3-CODEX", out v));
+        Eq("versao com update", "1.0 Update 3", v);
+
+        Eq("ruido de repack removido", "Cool Game",
+            LocalGameUtils.CleanGameName("Cool.Game.MULTi9.Repack", out v));
+
+        Eq("sigla com pontos preservada", "S.T.A.L.K.E.R. Shadow of Chernobyl",
+            LocalGameUtils.CleanGameName("S.T.A.L.K.E.R..Shadow.of.Chernobyl", out v));
+
+        Eq("nome ja limpo nao muda", "Hollow Knight",
+            LocalGameUtils.CleanGameName("Hollow Knight", out v));
+        Check("nome limpo nao inventa versao", v == null);
+
+        Eq("hifen de titulo sem grupo conhecido fica", "Half-Life",
+            LocalGameUtils.CleanGameName("Half-Life", out v));
+
+        Eq("nome vazio devolve vazio", "", LocalGameUtils.CleanGameName("", out v));
+        Eq("null devolve vazio", "", LocalGameUtils.CleanGameName(null, out v));
+
+        Eq("underscore vira espaco", "Some Old Game",
+            LocalGameUtils.CleanGameName("Some_Old_Game_v2.1-FLT", out v));
+
+        // ---- ToTitleCase ----
+        Console.WriteLine("[ToTitleCase]");
+        Eq("caixa alta vira titulo", "Stardust Wish of Witch", LocalGameUtils.ToTitleCase("STARDUST WISH OF WITCH"));
+        Eq("preposicao no meio fica minuscula", "Lord of the Rings", LocalGameUtils.ToTitleCase("LORD OF THE RINGS"));
+        Eq("primeira palavra sempre maiuscula", "The Witcher", LocalGameUtils.ToTitleCase("the witcher"));
+        Eq("numeral romano preservado", "Fable II", LocalGameUtils.ToTitleCase("FABLE II"));
+        Eq("sigla pontuada preservada", "S.T.A.L.K.E.R. Shadow", LocalGameUtils.ToTitleCase("S.T.A.L.K.E.R. shadow"));
+        Eq("hifen capitaliza os dois lados", "Pac-Man", LocalGameUtils.ToTitleCase("PAC-MAN"));
+        Eq("token com digito fica intacto", "Need 4 Speed 2K25", LocalGameUtils.ToTitleCase("NEED 4 SPEED 2K25"));
+        Eq("camelCase do titulo preservado", "EverSiege Untold Ages", LocalGameUtils.ToTitleCase("EverSiege Untold Ages"));
+        Eq("null passa direto", null, LocalGameUtils.ToTitleCase(null));
+
         Console.WriteLine();
         Console.WriteLine(string.Format("Resultado: {0}/{1} passaram, {2} falha(s).", total - failures, total, failures));
         return failures == 0 ? 0 : 1;

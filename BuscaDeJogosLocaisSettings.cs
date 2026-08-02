@@ -77,7 +77,17 @@ namespace BuscaDeJogosLocais
         private bool selecionado;
         public bool Selecionado { get { return selecionado; } set { SetValue(ref selecionado, value); } }
         
-        public string Nome { get; set; }
+        private string nome;
+        // Nome já limpo (editável na tela de resultados antes de importar).
+        public string Nome { get { return nome; } set { SetValue(ref nome, value); } }
+
+        // Nome cru da pasta, preservado para diagnóstico/tooltip.
+        public string NomeOriginal { get; set; }
+
+        private string versao;
+        // Versão extraída do nome da pasta (ex.: "1.00.1", "20260729"); vazia quando não há.
+        public string Versao { get { return versao; } set { SetValue(ref versao, value); } }
+
         public string CaminhoExe { get; set; }
         public string PastaRaiz { get; set; }
         public string PastaMonitoradaPai { get; set; } // Adicionado para filtro/agrupamento
@@ -86,6 +96,22 @@ namespace BuscaDeJogosLocais
         public bool JaExiste { get { return jaExiste; } set { SetValue(ref jaExiste, value); OnPropertyChanged("Status"); } }
         
         public string Status { get { return JaExiste ? "Já na Biblioteca" : "Pendente"; } }
+    }
+
+    // Uma linha da prévia de limpeza de nomes de jogos já importados.
+    public class RenameItem : ObservableObject
+    {
+        public Guid GameId { get; set; }
+        public string NomeAtual { get; set; }
+
+        private string nomeNovo;
+        public string NomeNovo { get { return nomeNovo; } set { SetValue(ref nomeNovo, value); } }
+
+        private string versao;
+        public string Versao { get { return versao; } set { SetValue(ref versao, value); } }
+
+        private bool selecionado = true;
+        public bool Selecionado { get { return selecionado; } set { SetValue(ref selecionado, value); } }
     }
 
     public class IntegrityResult : ObservableObject
@@ -177,6 +203,14 @@ namespace BuscaDeJogosLocais
 
         private bool tagDriveAsFeature = false;
         public bool TagDriveAsFeature { get { return tagDriveAsFeature; } set { SetValue(ref tagDriveAsFeature, value); } }
+
+        // Limpa o nome da pasta no padrão "scene release" ao importar (tira versão, grupo e ruído).
+        private bool limparNomeDaPasta = true;
+        public bool LimparNomeDaPasta { get { return limparNomeDaPasta; } set { SetValue(ref limparNomeDaPasta, value); } }
+
+        // Grava a versão detectada no campo "Versão" do jogo no Playnite.
+        private bool guardarVersaoDetectada = true;
+        public bool GuardarVersaoDetectada { get { return guardarVersaoDetectada; } set { SetValue(ref guardarVersaoDetectada, value); } }
 
         private bool baixarMetadadosAposImportar = true;
         public bool BaixarMetadadosAposImportar { get { return baixarMetadadosAposImportar; } set { SetValue(ref baixarMetadadosAposImportar, value); } }
@@ -282,6 +316,7 @@ namespace BuscaDeJogosLocais
         public RelayCommand<object> RelinkSelectedCommand { get; private set; }
         public RelayCommand<object> MarkNotFoundAsUninstalledCommand { get; private set; }
         public RelayCommand<object> ApplyLocalSourceToExistingCommand { get; private set; }
+        public RelayCommand<object> LimparNomesExistentesCommand { get; private set; }
 
         public ICollectionView ExcludedView { get; private set; }
         public RelayCommand<object> RemoveExcludedCommand { get; private set; }
@@ -653,6 +688,11 @@ namespace BuscaDeJogosLocais
                 }
 
                 plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) marcado(s) com a Fonte \"Local\".", atualizados), "Sucesso");
+            });
+
+            LimparNomesExistentesCommand = new RelayCommand<object>((_) =>
+            {
+                plugin.LimparNomesDosJogosLocais();
             });
 
             MarkNotFoundAsUninstalledCommand = new RelayCommand<object>((_) =>
