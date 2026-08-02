@@ -686,10 +686,15 @@
                             <TextBlock Text="Atualização da extensão" FontSize="16" FontWeight="Bold" Foreground="Gold" Margin="0,0,0,10" />
                             <TextBlock Text="{Binding VersaoInstaladaTexto}" Margin="0,0,0,10" />
                             <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,12"
-                                       Text="Consulta as releases publicadas no GitHub. Se houver versão mais nova, o arquivo é baixado e o Playnite abre a janela de instalação. A nova versão passa a valer depois de reiniciar o Playnite." />
-                            <Button Content="🔄 Verificar atualizações"
-                                    Command="{Binding CheckUpdateCommand}"
-                                    Padding="15,8" FontWeight="Bold" HorizontalAlignment="Left" Cursor="Hand" />
+                                       Text="Consulta as releases publicadas no GitHub. Havendo versão mais nova, o arquivo é baixado e, com sua confirmação, o Playnite fecha, os arquivos são trocados e ele abre de novo já na versão nova. Confira aqui depois de reiniciar: a versão instalada acima é a prova de que a troca deu certo." />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="🔄 Verificar atualizações"
+                                        Command="{Binding CheckUpdateCommand}"
+                                        Padding="15,8" FontWeight="Bold" Cursor="Hand" Margin="0,0,8,0" />
+                                <Button Content="📄 Ver log da última atualização"
+                                        Command="{Binding AbrirLogAtualizacaoCommand}"
+                                        Padding="15,8" Cursor="Hand" />
+                            </StackPanel>
                             <TextBlock Text="{Binding RepositorioUrl}" Opacity="0.5" FontSize="11" Margin="0,12,0,0" />
                         </StackPanel>
                     </Border>

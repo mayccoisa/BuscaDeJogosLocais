@@ -173,13 +173,14 @@ namespace BuscaDeJogosLocais
                 return;
             }
 
-            // O Playnite só processa um .pext passado por linha de comando quando NÃO há instância
-            // aberta: a segunda instância apenas manda "Focus" pelo pipe e encerra, e o arquivo é
-            // descartado em silêncio. Por isso a instalação precisa acontecer no religar.
+            // Entregar o .pext ao Playnite não resolve: com o app aberto ele descarta o arquivo, e
+            // pela linha de comando ele apenas REGISTRA a instalação para o início seguinte — o que
+            // deixava a extensão na versão velha mesmo depois do reinício. Aqui a troca é feita
+            // direto na pasta da extensão, com o Playnite fechado, e só então ele volta.
             var pergunta = string.Format(
                 "A nova versão foi baixada.\n\n" +
-                "Para instalar, o Playnite precisa ser fechado: com ele aberto, o instalador é ignorado. " +
-                "Posso fechar o Playnite agora e reabrir já na tela de instalação?\n\n" +
+                "Para aplicar, o Playnite precisa ser fechado — a extensão está em uso enquanto ele roda. " +
+                "Posso fechar o Playnite, trocar os arquivos e abrir de novo já na versão nova?\n\n" +
                 "Se preferir fazer depois, o arquivo está em:\n{0}",
                 target);
 
@@ -191,7 +192,7 @@ namespace BuscaDeJogosLocais
 
             if (ScheduleInstallAfterRestart(target))
             {
-                // O auxiliar espera o Playnite sair e reabre com o .pext; o shutdown vem em seguida.
+                // O auxiliar já está armado esperando o processo sair; agora é só pedir o encerramento.
                 ShutdownPlaynite();
             }
             else
@@ -207,29 +208,34 @@ namespace BuscaDeJogosLocais
             }
         }
 
+        /// <summary>Onde o log do auxiliar de atualização é gravado (para diagnosticar uma troca que falhou).</summary>
+        public static string UpdateLogPath
+        {
+            get { return Path.Combine(Path.GetTempPath(), "BuscaDeJogosLocais-update.log"); }
+        }
+
         /// <summary>
-        /// Deixa um processo auxiliar esperando o Playnite encerrar para então reabri-lo passando o
-        /// .pext — que é o único momento em que ele aceita o arquivo e mostra o diálogo de instalação.
+        /// Deixa um auxiliar esperando o Playnite encerrar para então extrair o .pext (que é um zip)
+        /// por cima da pasta da extensão e reabrir o Playnite. Sem app rodando não há DLL travada,
+        /// e a troca vale já na abertura seguinte — sem depender da fila de instalação do Playnite.
+        /// Tudo o que o auxiliar faz vai para um log, porque ele roda depois que a extensão morreu.
         /// </summary>
-        private static bool ScheduleInstallAfterRestart(string pextPath)
+        private bool ScheduleInstallAfterRestart(string pextPath)
         {
             try
             {
                 var current = Process.GetCurrentProcess();
                 var exe = current.MainModule.FileName;
-                if (string.IsNullOrEmpty(exe) || !File.Exists(exe))
+                if (string.IsNullOrEmpty(exe) || !File.Exists(exe) || string.IsNullOrEmpty(extensionDir))
                 {
                     return false;
                 }
 
-                var script = string.Format(
-                    "try {{ Wait-Process -Id {0} -Timeout 120 }} catch {{ }}; Start-Sleep -Seconds 2; Start-Process -FilePath '{1}' -ArgumentList '\"{2}\"'",
-                    current.Id,
-                    exe.Replace("'", "''"),
-                    pextPath.Replace("'", "''"));
+                var scriptPath = Path.Combine(Path.GetTempPath(), "BuscaDeJogosLocais-update.ps1");
+                File.WriteAllText(scriptPath, BuildInstallScript(current.Id, exe, pextPath, extensionDir), Encoding.UTF8);
 
                 var info = new ProcessStartInfo("powershell.exe",
-                    "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"" + script.Replace("\"", "\\\"") + "\"")
+                    "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + scriptPath + "\"")
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true
@@ -243,6 +249,42 @@ namespace BuscaDeJogosLocais
                 logger.Error(ex, "Não foi possível agendar a instalação da atualização para o reinício.");
                 return false;
             }
+        }
+
+        private static string BuildInstallScript(int playniteProcessId, string playniteExe, string pextPath, string destino)
+        {
+            var script = new StringBuilder();
+            script.AppendLine("$ErrorActionPreference = 'Stop'");
+            script.AppendLine("$log = Join-Path $env:TEMP 'BuscaDeJogosLocais-update.log'");
+            script.AppendLine("function Registrar($m) { \"$(Get-Date -Format 'HH:mm:ss') $m\" | Out-File -FilePath $log -Append -Encoding utf8 }");
+            script.AppendLine("try {");
+            script.AppendLine(string.Format("  Registrar 'Esperando o Playnite (PID {0}) encerrar...'", playniteProcessId));
+            script.AppendLine(string.Format("  try {{ Wait-Process -Id {0} -Timeout 180 }} catch {{ Registrar 'Playnite ja estava fechado ou demorou demais.' }}", playniteProcessId));
+            script.AppendLine("  Start-Sleep -Seconds 3");
+            script.AppendLine(string.Format("  $pext = '{0}'", Escape(pextPath)));
+            script.AppendLine(string.Format("  $destino = '{0}'", Escape(destino)));
+            script.AppendLine("  $temp = Join-Path $env:TEMP ('BuscaDeJogosLocais-' + [Guid]::NewGuid().ToString('N'))");
+            script.AppendLine("  New-Item -ItemType Directory -Path $temp | Out-Null");
+            script.AppendLine("  Add-Type -AssemblyName System.IO.Compression.FileSystem");
+            script.AppendLine("  [IO.Compression.ZipFile]::ExtractToDirectory($pext, $temp)");
+            script.AppendLine("  Registrar \"Pacote extraido em $temp\"");
+            // A cópia é por cima: arquivo que saiu do pacote novo some do destino só se o autor removeu,
+            // e apagar a pasta inteira arriscaria perder a extensão se a cópia falhasse no meio.
+            script.AppendLine("  Copy-Item -Path (Join-Path $temp '*') -Destination $destino -Recurse -Force");
+            script.AppendLine("  Registrar \"Arquivos copiados para $destino\"");
+            script.AppendLine("  Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue");
+            script.AppendLine("} catch {");
+            script.AppendLine("  Registrar \"FALHA: $($_.Exception.Message)\"");
+            script.AppendLine("}");
+            script.AppendLine(string.Format("Registrar 'Reabrindo o Playnite...'"));
+            script.AppendLine(string.Format("Start-Process -FilePath '{0}'", Escape(playniteExe)));
+
+            return script.ToString();
+        }
+
+        private static string Escape(string value)
+        {
+            return value == null ? string.Empty : value.Replace("'", "''");
         }
 
         private static void ShutdownPlaynite()

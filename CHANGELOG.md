@@ -6,6 +6,14 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.7.1] - 2026-08-02
+
+### Corrigido
+- **A atualização agora troca de versão de verdade.** Mesmo abrindo o Playnite com o arquivo, ele apenas *registrava* a instalação para uma inicialização seguinte — o resultado é que você reiniciava, o botão dizia que tinha atualizado e a extensão continuava na versão antiga. Agora, com sua confirmação, o Playnite é fechado, os arquivos da extensão são trocados direto na pasta dela e o Playnite volta já na versão nova, sem depender de mais nenhum reinício.
+- A aba "Atualizações" ganhou o botão **"Ver log da última atualização"** e um texto explicando que a "Versão instalada" no topo é a prova de que a troca deu certo. Se alguma vez ela não subir, o log diz em que passo parou.
+
+---
+
 ## [0.7.0] - 2026-08-02
 
 ### Adicionado

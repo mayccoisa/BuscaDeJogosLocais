@@ -403,6 +403,9 @@ namespace BuscaDeJogosLocais
             get { return updateChecker.ReleasesUrl; }
         }
 
+        // Onde o auxiliar da atualização registra o que fez — é o que explica uma troca que não pegou.
+        public RelayCommand<object> AbrirLogAtualizacaoCommand { get; private set; }
+
         public string UltimoScanTexto
         {
             get
@@ -449,6 +452,21 @@ namespace BuscaDeJogosLocais
                 UpdateChecker.DefaultExtensionDir);
 
             CheckUpdateCommand = new RelayCommand<object>((_) => updateChecker.CheckInteractive());
+
+            AbrirLogAtualizacaoCommand = new RelayCommand<object>((_) =>
+            {
+                var caminho = UpdateChecker.UpdateLogPath;
+                if (!File.Exists(caminho))
+                {
+                    plugin.PlayniteApi.Dialogs.ShowMessage(
+                        "Ainda não há registro de atualização nesta máquina.\n\nO log é criado quando você manda instalar uma versão nova.",
+                        "Log da atualização");
+                    return;
+                }
+
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(caminho) { UseShellExecute = true }); }
+                catch (Exception) { plugin.PlayniteApi.Dialogs.ShowMessage(caminho, "Log da atualização"); }
+            });
 
             // Inicializar Views de Coleção
             JogosEncontradosView = CollectionViewSource.GetDefaultView(JogosEncontrados);
