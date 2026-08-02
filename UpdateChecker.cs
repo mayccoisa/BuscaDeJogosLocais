@@ -173,17 +173,33 @@ namespace BuscaDeJogosLocais
                 return;
             }
 
-            if (LaunchInstaller(target))
+            // O Playnite só processa um .pext passado por linha de comando quando NÃO há instância
+            // aberta: a segunda instância apenas manda "Focus" pelo pipe e encerra, e o arquivo é
+            // descartado em silêncio. Por isso a instalação precisa acontecer no religar.
+            var pergunta = string.Format(
+                "A nova versão foi baixada.\n\n" +
+                "Para instalar, o Playnite precisa ser fechado: com ele aberto, o instalador é ignorado. " +
+                "Posso fechar o Playnite agora e reabrir já na tela de instalação?\n\n" +
+                "Se preferir fazer depois, o arquivo está em:\n{0}",
+                target);
+
+            if (api.Dialogs.ShowMessage(pergunta, "Atualização baixada", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             {
-                api.Dialogs.ShowMessage(
-                    "Confirme a instalação na janela que o Playnite vai abrir.\n\nDepois é preciso reiniciar o Playnite para a nova versão entrar em uso.",
-                    "Atualização baixada");
+                RevealInExplorer(target);
+                return;
+            }
+
+            if (ScheduleInstallAfterRestart(target))
+            {
+                // O auxiliar espera o Playnite sair e reabre com o .pext; o shutdown vem em seguida.
+                ShutdownPlaynite();
             }
             else
             {
                 api.Dialogs.ShowMessage(
                     string.Format(
-                        "O arquivo foi baixado, mas não consegui abrir o instalador automaticamente.\n\nEle está em:\n{0}\n\nDê um duplo clique nele para instalar.",
+                        "Não consegui agendar a instalação automaticamente.\n\n" +
+                        "Feche o Playnite e dê um duplo clique no arquivo:\n{0}",
                         target),
                     "Atualização baixada");
 
@@ -191,33 +207,54 @@ namespace BuscaDeJogosLocais
             }
         }
 
-        private static bool LaunchInstaller(string pextPath)
+        /// <summary>
+        /// Deixa um processo auxiliar esperando o Playnite encerrar para então reabri-lo passando o
+        /// .pext — que é o único momento em que ele aceita o arquivo e mostra o diálogo de instalação.
+        /// </summary>
+        private static bool ScheduleInstallAfterRestart(string pextPath)
         {
-            // Caminho preferido: entregar o .pext ao próprio Playnite em execução, que abre o
-            // diálogo nativo de instalação. Não depende da associação do .pext no Windows.
             try
             {
-                var exe = Process.GetCurrentProcess().MainModule.FileName;
-                if (!string.IsNullOrEmpty(exe) && File.Exists(exe))
+                var current = Process.GetCurrentProcess();
+                var exe = current.MainModule.FileName;
+                if (string.IsNullOrEmpty(exe) || !File.Exists(exe))
                 {
-                    Process.Start(new ProcessStartInfo(exe, "\"" + pextPath + "\"") { UseShellExecute = false });
-                    return true;
+                    return false;
                 }
-            }
-            catch (Exception ex)
-            {
-                logger.Warn(ex, "Não foi possível acionar o Playnite para instalar o .pext; tentando pela associação do Windows.");
-            }
 
-            try
-            {
-                Process.Start(new ProcessStartInfo(pextPath) { UseShellExecute = true });
+                var script = string.Format(
+                    "try {{ Wait-Process -Id {0} -Timeout 120 }} catch {{ }}; Start-Sleep -Seconds 2; Start-Process -FilePath '{1}' -ArgumentList '\"{2}\"'",
+                    current.Id,
+                    exe.Replace("'", "''"),
+                    pextPath.Replace("'", "''"));
+
+                var info = new ProcessStartInfo("powershell.exe",
+                    "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"" + script.Replace("\"", "\\\"") + "\"")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                Process.Start(info);
                 return true;
             }
             catch (Exception ex)
             {
-                logger.Error(ex, "Não foi possível abrir o arquivo .pext.");
+                logger.Error(ex, "Não foi possível agendar a instalação da atualização para o reinício.");
                 return false;
+            }
+        }
+
+        private static void ShutdownPlaynite()
+        {
+            try
+            {
+                var exe = Process.GetCurrentProcess().MainModule.FileName;
+                Process.Start(new ProcessStartInfo(exe, "--shutdown") { UseShellExecute = false });
+            }
+            catch (Exception ex)
+            {
+                logger.Warn(ex, "Não foi possível pedir o encerramento do Playnite; feche manualmente para concluir.");
             }
         }
 

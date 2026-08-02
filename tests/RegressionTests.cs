@@ -109,6 +109,15 @@ class RegressionTests
         Check("substring parcial NAO casa (match exato)",
             !LocalGameUtils.MatchesSavePattern(new List<string> { "savescreenshots" }, new List<string>(), new List<string> { "save" }));
 
+        // ---- IsUnderFolder ----
+        Console.WriteLine("[IsUnderFolder]");
+        Check("subpasta direta casa", LocalGameUtils.IsUnderFolder(@"C:\Games\CoolGame", @"C:\Games"));
+        Check("subpasta profunda casa", LocalGameUtils.IsUnderFolder(@"C:\Games\CoolGame\bin", @"C:\Games"));
+        Check("a propria pasta casa", LocalGameUtils.IsUnderFolder(@"C:\Games", @"C:\Games\"));
+        Check("prefixo parecido NAO casa", !LocalGameUtils.IsUnderFolder(@"C:\Games2\X", @"C:\Games"));
+        Check("outra raiz nao casa", !LocalGameUtils.IsUnderFolder(@"D:\Games\X", @"C:\Games"));
+        Check("null nao casa", !LocalGameUtils.IsUnderFolder(null, @"C:\Games"));
+
         // ---- CleanGameName / ExtractVersion ----
         Console.WriteLine("[CleanGameName]");
         string v;

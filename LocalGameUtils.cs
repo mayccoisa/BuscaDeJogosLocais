@@ -63,6 +63,21 @@ namespace BuscaDeJogosLocais
             return excludedExePaths.Any(e => e != null && e.Equals(exePath, StringComparison.OrdinalIgnoreCase));
         }
 
+        // True se 'path' está dentro de 'folder' (ou é a própria pasta). Compara caminhos
+        // normalizados e exige separador na fronteira, para "C:\Games2" não contar como
+        // filho de "C:\Games".
+        public static bool IsUnderFolder(string path, string folder)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(folder)) return false;
+
+            string p = NormalizePath(path);
+            string f = NormalizePath(folder);
+            if (p.Length == 0 || f.Length == 0) return false;
+            if (p.Equals(f, StringComparison.OrdinalIgnoreCase)) return true;
+
+            return p.StartsWith(f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+
         // Padrões usados para reconhecer que uma pasta de jogo contém um "save" local.
         // Entradas começando com "." são tratadas como extensões de arquivo (ex: ".sav");
         // as demais são comparadas com nomes de pastas ou nomes de arquivo (sem extensão).
@@ -139,6 +154,13 @@ namespace BuscaDeJogosLocais
 
             if (partes.Count == 0) return null;
             return string.Join(" ", partes.ToArray());
+        }
+
+        // Atalho para quem só quer o nome limpo, sem a versão.
+        public static string CleanGameNameOnly(string folderName)
+        {
+            string ignorado;
+            return CleanGameName(folderName, out ignorado);
         }
 
         // Devolve o nome legível de uma pasta de jogo e, via 'version', a versão encontrada (ou null).

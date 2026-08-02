@@ -98,6 +98,43 @@ namespace BuscaDeJogosLocais
         public string Status { get { return JaExiste ? "Já na Biblioteca" : "Pendente"; } }
     }
 
+    // Um jogo (ou candidato a jogo) visto de dentro de uma pasta monitorada.
+    public class PastaJogoItem : ObservableObject
+    {
+        public Guid GameId { get; set; }        // Guid.Empty quando ainda não está na biblioteca
+        public string Nome { get; set; }        // nome na biblioteca, ou o nome da pasta
+        public string NomePasta { get; set; }
+        public string Caminho { get; set; }
+        public string Versao { get; set; }
+        public string Status { get; set; }      // "Na biblioteca", "Não importado", "Pasta ausente", "Ignorado"
+    }
+
+    // Resumo de uma pasta monitorada: quanto dela virou biblioteca e quanto ficou de fora.
+    public class PastaResumo : ObservableObject
+    {
+        public string Caminho { get; set; }
+        public bool ExisteEmDisco { get; set; }
+        public int TotalSubpastas { get; set; }
+        public int NaBiblioteca { get; set; }
+        public int NaoImportados { get; set; }
+        public int ComProblema { get; set; }
+        public int Ignorados { get; set; }
+
+        public List<PastaJogoItem> Itens { get; set; }
+
+        public string StatusTexto
+        {
+            get
+            {
+                if (!ExisteEmDisco) return "Pasta inacessível";
+                if (TotalSubpastas == 0) return "Pasta vazia";
+                if (NaBiblioteca == 0) return "Nada importado";
+                if (NaoImportados == 0 && ComProblema == 0) return "Tudo importado";
+                return "Parcialmente importado";
+            }
+        }
+    }
+
     // Uma linha da prévia de limpeza de nomes de jogos já importados.
     public class RenameItem : ObservableObject
     {
@@ -318,6 +355,11 @@ namespace BuscaDeJogosLocais
         public RelayCommand<object> ApplyLocalSourceToExistingCommand { get; private set; }
         public RelayCommand<object> LimparNomesExistentesCommand { get; private set; }
 
+        // Resumo por pasta monitorada: quantos jogos dela estão na biblioteca e quantos ficaram de fora.
+        public ObservableCollection<PastaResumo> PastasResumo { get; private set; }
+        public RelayCommand<object> VerJogosDaPastaCommand { get; private set; }
+        public RelayCommand<object> AtualizarResumoPastasCommand { get; private set; }
+
         public ICollectionView ExcludedView { get; private set; }
         public RelayCommand<object> RemoveExcludedCommand { get; private set; }
 
@@ -359,6 +401,7 @@ namespace BuscaDeJogosLocais
         {
             JogosEncontrados = new ObservableCollection<ScannedGame>();
             JogosParaRelinkar = new ObservableCollection<RelinkGameItem>();
+            PastasResumo = new ObservableCollection<PastaResumo>();
             this.plugin = plugin;
             var savedSettings = plugin.LoadPluginSettings<BuscaDeJogosLocaisSettings>();
             if (savedSettings != null)
@@ -693,6 +736,27 @@ namespace BuscaDeJogosLocais
             LimparNomesExistentesCommand = new RelayCommand<object>((_) =>
             {
                 plugin.LimparNomesDosJogosLocais();
+                RecalcularEstatisticas();
+            });
+
+            AtualizarResumoPastasCommand = new RelayCommand<object>((_) => RecalcularEstatisticas());
+
+            VerJogosDaPastaCommand = new RelayCommand<object>((param) =>
+            {
+                var resumo = param as PastaResumo;
+                if (resumo == null) return;
+
+                var window = plugin.PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+                {
+                    ShowMaximizeButton = true,
+                    ShowMinimizeButton = false
+                });
+                window.Title = string.Format("Jogos em {0}", resumo.Caminho);
+                window.Width = 950;
+                window.Height = 600;
+                window.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
+                window.Content = new FolderGamesWindow(resumo);
+                window.ShowDialog();
             });
 
             MarkNotFoundAsUninstalledCommand = new RelayCommand<object>((_) =>
@@ -899,8 +963,128 @@ namespace BuscaDeJogosLocais
             return entry.PastaMonitoradaPai != null ? entry.PastaMonitoradaPai.Equals(FiltroPastaSelecionada, StringComparison.OrdinalIgnoreCase) : true;
         }
 
+        /// <summary>
+        /// Monta, para cada pasta monitorada, o que dela já virou jogo na biblioteca e o que ficou
+        /// de fora. O "candidato" é a subpasta de primeiro nível — a mesma unidade que o scan usa
+        /// como raiz de jogo —, então o que aparece como "não importado" é exatamente o que o
+        /// scan enxergaria ali.
+        /// </summary>
+        public void RecalcularResumoPastas()
+        {
+            PastasResumo.Clear();
+
+            if (Settings.Pastas == null) return;
+
+            var jogosLocais = plugin.PlayniteApi.Database.Games
+                .Where(g => g.PluginId == plugin.Id && !string.IsNullOrEmpty(g.InstallDirectory))
+                .ToList();
+
+            var ignorados = Settings.CaminhosIgnorados != null
+                ? Settings.CaminhosIgnorados.Select(e => e.CaminhoExe).Where(c => !string.IsNullOrEmpty(c)).ToList()
+                : new List<string>();
+
+            foreach (var pasta in Settings.Pastas)
+            {
+                var resumo = new PastaResumo
+                {
+                    Caminho = pasta,
+                    ExisteEmDisco = Directory.Exists(pasta),
+                    Itens = new List<PastaJogoItem>()
+                };
+
+                // Jogos da biblioteca que apontam para dentro desta pasta monitorada.
+                var jogosDaPasta = jogosLocais
+                    .Where(g => LocalGameUtils.IsUnderFolder(g.InstallDirectory, pasta))
+                    .ToList();
+
+                var vinculados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var jogo in jogosDaPasta)
+                {
+                    vinculados.Add(plugin.NormalizePath(jogo.InstallDirectory));
+
+                    bool pastaSumiu = !Directory.Exists(jogo.InstallDirectory);
+                    if (pastaSumiu) resumo.ComProblema++; else resumo.NaBiblioteca++;
+
+                    resumo.Itens.Add(new PastaJogoItem
+                    {
+                        GameId = jogo.Id,
+                        Nome = jogo.Name,
+                        NomePasta = SafeFolderName(jogo.InstallDirectory),
+                        Caminho = jogo.InstallDirectory,
+                        Versao = jogo.Version,
+                        Status = pastaSumiu ? "Pasta ausente" : "Na biblioteca"
+                    });
+                }
+
+                if (resumo.ExisteEmDisco)
+                {
+                    string[] subpastas;
+                    try { subpastas = Directory.GetDirectories(pasta); }
+                    catch (Exception) { subpastas = new string[0]; }
+
+                    resumo.TotalSubpastas = subpastas.Length;
+
+                    foreach (var sub in subpastas)
+                    {
+                        if (vinculados.Contains(plugin.NormalizePath(sub))) continue;
+
+                        bool foiIgnorada = ignorados.Any(exe => LocalGameUtils.IsUnderFolder(exe, sub));
+                        if (foiIgnorada) resumo.Ignorados++; else resumo.NaoImportados++;
+
+                        resumo.Itens.Add(new PastaJogoItem
+                        {
+                            GameId = Guid.Empty,
+                            Nome = LocalGameUtils.CleanGameNameOnly(SafeFolderName(sub)),
+                            NomePasta = SafeFolderName(sub),
+                            Caminho = sub,
+                            Versao = LocalGameUtils.ExtractVersion(SafeFolderName(sub)),
+                            Status = foiIgnorada ? "Ignorado" : "Não importado"
+                        });
+                    }
+                }
+
+                PastasResumo.Add(resumo);
+            }
+
+            // Jogos locais que não caem em nenhuma pasta monitorada: some da vista se não mostrar.
+            var orfaos = jogosLocais
+                .Where(g => !Settings.Pastas.Any(p => LocalGameUtils.IsUnderFolder(g.InstallDirectory, p)))
+                .ToList();
+
+            if (orfaos.Count > 0)
+            {
+                var resumo = new PastaResumo
+                {
+                    Caminho = "(fora das pastas monitoradas)",
+                    ExisteEmDisco = true,
+                    TotalSubpastas = orfaos.Count,
+                    NaBiblioteca = orfaos.Count,
+                    Itens = orfaos.Select(g => new PastaJogoItem
+                    {
+                        GameId = g.Id,
+                        Nome = g.Name,
+                        NomePasta = SafeFolderName(g.InstallDirectory),
+                        Caminho = g.InstallDirectory,
+                        Versao = g.Version,
+                        Status = Directory.Exists(g.InstallDirectory) ? "Na biblioteca" : "Pasta ausente"
+                    }).ToList()
+                };
+                resumo.ComProblema = resumo.Itens.Count(i => i.Status == "Pasta ausente");
+                resumo.NaBiblioteca -= resumo.ComProblema;
+                PastasResumo.Add(resumo);
+            }
+        }
+
+        private static string SafeFolderName(string path)
+        {
+            try { return new DirectoryInfo(path).Name; }
+            catch (Exception) { return path; }
+        }
+
         public void RecalcularEstatisticas()
         {
+            RecalcularResumoPastas();
+
             if (Settings.Pastas == null || Settings.Pastas.Count == 0)
             {
                 PastasEstatisticas = "Nenhuma pasta monitorada no momento.";

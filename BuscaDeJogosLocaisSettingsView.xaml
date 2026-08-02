@@ -103,16 +103,60 @@
 
                     <StackPanel Grid.Row="2" Margin="0,0,0,10">
                         <TextBlock Text="Gerencie as pastas que o plugin deve vigiar:" FontWeight="Bold" Margin="0,0,0,5" />
-                        <Button Content="➕ Adicionar Nova Pasta" Command="{Binding AddFolderCommand}" Padding="10,5" HorizontalAlignment="Left" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="➕ Adicionar Nova Pasta" Command="{Binding AddFolderCommand}" Padding="10,5" Margin="0,0,8,0" />
+                            <Button Content="🔄 Atualizar resumo" Command="{Binding AtualizarResumoPastasCommand}" Padding="10,5" />
+                        </StackPanel>
+                        <TextBlock Text="Cada linha mostra quanto daquela pasta já virou jogo na biblioteca. Clique em 'Ver jogos' para a lista completa, incluindo o que ficou de fora."
+                                   TextWrapping="Wrap" FontStyle="Italic" Opacity="0.7" FontSize="11" Margin="0,6,0,0" />
                     </StackPanel>
 
-                    <ListBox Grid.Row="3" ItemsSource="{Binding Settings.Pastas}" BorderThickness="1" Background="#22FFFFFF" Margin="0,0,0,10">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" Padding="5" />
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <DataGrid Grid.Row="3" ItemsSource="{Binding PastasResumo}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                              Background="#22FFFFFF" RowBackground="Transparent" AlternatingRowBackground="#11FFFFFF"
+                              GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#22FFFFFF"
+                              HeadersVisibility="Column" Margin="0,0,0,10">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Pasta" Binding="{Binding Caminho}" Width="*" />
+
+                            <DataGridTextColumn Header="Situação" Binding="{Binding StatusTexto}" Width="150">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding StatusTexto}" Value="Tudo importado">
+                                                <Setter Property="Foreground" Value="LightGreen" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding StatusTexto}" Value="Nada importado">
+                                                <Setter Property="Foreground" Value="#FF8080" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding StatusTexto}" Value="Parcialmente importado">
+                                                <Setter Property="Foreground" Value="Gold" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding StatusTexto}" Value="Pasta inacessível">
+                                                <Setter Property="Foreground" Value="#FF8080" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="Na biblioteca" Binding="{Binding NaBiblioteca}" Width="100" />
+                            <DataGridTextColumn Header="Fora" Binding="{Binding NaoImportados}" Width="70" />
+                            <DataGridTextColumn Header="Com problema" Binding="{Binding ComProblema}" Width="110" />
+                            <DataGridTextColumn Header="Ignorados" Binding="{Binding Ignorados}" Width="90" />
+
+                            <DataGridTemplateColumn Header="" Width="100" CanUserSort="False">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="Ver jogos"
+                                                Command="{Binding DataContext.VerJogosDaPastaCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}"
+                                                Padding="8,3" Cursor="Hand" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
 
                     <Border Grid.Row="4" Background="#11FFFFFF" Padding="10" CornerRadius="5">
                         <TextBlock Text="{Binding PastasEstatisticas}" TextWrapping="Wrap" />

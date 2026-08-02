@@ -6,6 +6,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.6.0] - 2026-08-02
+
+### Adicionado
+- **A aba "Pastas Monitoradas" agora mostra o que cada pasta trouxe para a biblioteca.** Cada pasta vira uma linha com a situação (Tudo importado / Parcialmente importado / Nada importado / Pasta inacessível) e as contagens: quantos jogos estão na biblioteca, quantos ficaram de fora, quantos estão com a pasta ausente e quantos você mandou ignorar. Fica na cara qual pasta não está puxando nada.
+- Botão **"Ver jogos"** em cada pasta: abre a lista completa daquela pasta, com nome, versão, status e caminho, e um filtro **"Mostrar só o que ficou de fora"** para ir direto ao que deu problema.
+- Jogos locais que estão fora de todas as pastas monitoradas aparecem numa linha própria, em vez de sumirem da conta.
+
+### Corrigido
+- **A atualização da extensão agora instala de verdade.** O arquivo era entregue ao Playnite que já estava aberto, e nesse caso ele apenas traz a janela para a frente e descarta o arquivo — por isso a mensagem "confirme na janela que o Playnite vai abrir" aparecia e nada acontecia. Agora a extensão avisa que o Playnite precisa fechar, encerra o programa e o reabre já na tela de instalação. Se você preferir fazer depois, ela mostra onde o arquivo foi salvo.
+
+---
+
 ## [0.5.1] - 2026-08-02
 
 ### Corrigido

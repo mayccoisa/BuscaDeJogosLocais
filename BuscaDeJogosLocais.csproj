@@ -62,6 +62,9 @@
     <Compile Include="RenamePreviewWindow.xaml.cs">
       <DependentUpon>RenamePreviewWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="FolderGamesWindow.xaml.cs">
+      <DependentUpon>FolderGamesWindow.xaml</DependentUpon>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Page Include="BuscaDeJogosLocaisSettingsView.xaml">
@@ -77,6 +80,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="RenamePreviewWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="FolderGamesWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
