@@ -6,6 +6,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.7.3] - 2026-08-02
+
+### Alterado
+- **Operações em lote ficaram mais leves.** Importar vários jogos, renomear em massa, aplicar tags de HD ou a fonte "Local", relinkar e baixar metadados atualizavam a biblioteca jogo a jogo, e o Playnite redesenhava a tela a cada um. Agora cada operação faz uma atualização só, no fim. Em biblioteca pequena a diferença é discreta; em biblioteca grande é a diferença entre travar e não travar.
+
+---
+
 ## [0.7.2] - 2026-08-02
 
 ### Alterado

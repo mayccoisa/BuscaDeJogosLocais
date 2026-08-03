@@ -760,17 +760,7 @@ namespace BuscaDeJogosLocais
                     return;
                 }
 
-                var idsImportados = new List<Guid>();
-                foreach (var jogo in selecionados)
-                {
-                    Guid novoId;
-                    if (plugin.ImportarJogoManual(jogo, out novoId))
-                    {
-                        idsImportados.Add(novoId);
-                        jogo.JaExiste = true;
-                        jogo.Selecionado = false;
-                    }
-                }
+                var idsImportados = plugin.ImportarLote(selecionados);
 
                 if (idsImportados.Count > 0)
                 {
@@ -791,15 +781,19 @@ namespace BuscaDeJogosLocais
                 int atualizados = 0;
                 var games = plugin.PlayniteApi.Database.Games.Where(g => g.PluginId == plugin.Id).ToList();
                 
-                foreach (var game in games)
+                using (plugin.PlayniteApi.Database.BufferedUpdate())
                 {
-                    if (plugin.ApplyDriveTag(game))
+                    foreach (var game in games)
                     {
-                        atualizados++;
-                        plugin.PlayniteApi.Database.Games.Update(game);
+                        if (plugin.ApplyDriveTag(game))
+                        {
+                            atualizados++;
+                            plugin.PlayniteApi.Database.Games.Update(game);
+                        }
                     }
                 }
-                
+
+
                 plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogos atualizados com a característica do HD.", atualizados), "Sucesso");
             });
 
@@ -808,12 +802,15 @@ namespace BuscaDeJogosLocais
                 int atualizados = 0;
                 var games = plugin.PlayniteApi.Database.Games.Where(g => g.PluginId == plugin.Id).ToList();
 
-                foreach (var game in games)
+                using (plugin.PlayniteApi.Database.BufferedUpdate())
                 {
-                    if (plugin.ApplyLocalSource(game))
+                    foreach (var game in games)
                     {
-                        atualizados++;
-                        plugin.PlayniteApi.Database.Games.Update(game);
+                        if (plugin.ApplyLocalSource(game))
+                        {
+                            atualizados++;
+                            plugin.PlayniteApi.Database.Games.Update(game);
+                        }
                     }
                 }
 
@@ -998,29 +995,32 @@ namespace BuscaDeJogosLocais
                 }
 
                 int atualizados = 0;
-                foreach (var relink in selecionados)
+                using (plugin.PlayniteApi.Database.BufferedUpdate())
                 {
-                    var game = plugin.PlayniteApi.Database.Games.Get(relink.GameId);
-                    if (game == null) continue;
-
-                    game.InstallDirectory = relink.NovoInstallDirectory;
-                    game.IsInstalled = true;
-                    
-                    if (game.GameActions != null)
+                    foreach (var relink in selecionados)
                     {
-                        var fileAction = game.GameActions.FirstOrDefault(a => a.Type == Playnite.SDK.Models.GameActionType.File);
-                        if (fileAction != null)
-                        {
-                            fileAction.Path = relink.NovoCaminhoExe;
-                            fileAction.WorkingDir = "{InstallDir}";
-                        }
-                    }
+                        var game = plugin.PlayniteApi.Database.Games.Get(relink.GameId);
+                        if (game == null) continue;
 
-                    plugin.PlayniteApi.Database.Games.Update(game);
-                    
-                    relink.Selecionado = false;
-                    relink.Status = "Relinkado";
-                    atualizados++;
+                        game.InstallDirectory = relink.NovoInstallDirectory;
+                        game.IsInstalled = true;
+
+                        if (game.GameActions != null)
+                        {
+                            var fileAction = game.GameActions.FirstOrDefault(a => a.Type == Playnite.SDK.Models.GameActionType.File);
+                            if (fileAction != null)
+                            {
+                                fileAction.Path = relink.NovoCaminhoExe;
+                                fileAction.WorkingDir = "{InstallDir}";
+                            }
+                        }
+
+                        plugin.PlayniteApi.Database.Games.Update(game);
+
+                        relink.Selecionado = false;
+                        relink.Status = "Relinkado";
+                        atualizados++;
+                    }
                 }
 
                 if (atualizados > 0)

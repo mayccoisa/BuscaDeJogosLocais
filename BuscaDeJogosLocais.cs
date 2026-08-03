@@ -220,17 +220,7 @@ namespace BuscaDeJogosLocais
                 resultados,
                 importar: (selecionados) =>
                 {
-                    var importados = new List<Guid>();
-                    foreach (var j in selecionados)
-                    {
-                        Guid novoId;
-                        if (ImportarJogoManual(j, out novoId))
-                        {
-                            j.JaExiste = true;
-                            importados.Add(novoId);
-                        }
-                    }
-                    BaixarMetadadosDosImportados(importados);
+                    BaixarMetadadosDosImportados(ImportarLote(selecionados));
                 },
                 ignorar: (jogo) => AdicionarExcluido(jogo)
             );
@@ -272,17 +262,7 @@ namespace BuscaDeJogosLocais
                     new ObservableCollection<ScannedGame>(novos),
                     importar: (selecionados) =>
                     {
-                        var importados = new List<Guid>();
-                        foreach (var j in selecionados)
-                        {
-                            Guid novoId;
-                            if (ImportarJogoManual(j, out novoId))
-                            {
-                                j.JaExiste = true;
-                                importados.Add(novoId);
-                            }
-                        }
-                        BaixarMetadadosDosImportados(importados);
+                        BaixarMetadadosDosImportados(ImportarLote(selecionados));
                     },
                     ignorar: (jogo) => AdicionarExcluido(jogo)
                 );
@@ -360,6 +340,31 @@ namespace BuscaDeJogosLocais
         {
             Guid ignorado;
             return ImportarJogoManual(scanned, out ignorado);
+        }
+
+        /// <summary>
+        /// Importa vários jogos de uma vez em modo bufferizado (um único refresh de biblioteca no
+        /// fim, em vez de um por jogo) e devolve os ids criados. Marca os itens importados.
+        /// </summary>
+        public List<Guid> ImportarLote(IEnumerable<ScannedGame> selecionados)
+        {
+            var importados = new List<Guid>();
+            if (selecionados == null) return importados;
+
+            using (PlayniteApi.Database.BufferedUpdate())
+            {
+                foreach (var jogo in selecionados)
+                {
+                    Guid novoId;
+                    if (!ImportarJogoManual(jogo, out novoId)) continue;
+
+                    jogo.JaExiste = true;
+                    jogo.Selecionado = false;
+                    importados.Add(novoId);
+                }
+            }
+
+            return importados;
         }
 
         public bool ImportarJogoManual(ScannedGame scanned, out Guid gameId)
@@ -464,25 +469,29 @@ namespace BuscaDeJogosLocais
             {
                 progressArgs.ProgressMaxValue = gameIds.Count;
 
-                foreach (var id in gameIds)
+                // Um refresh de biblioteca só no fim; o usuário acompanha pela barra de progresso.
+                using (PlayniteApi.Database.BufferedUpdate())
                 {
-                    if (progressArgs.CancelToken.IsCancellationRequested) break;
-
-                    var jogo = PlayniteApi.Database.Games.Get(id);
-                    progressArgs.Text = jogo != null
-                        ? string.Format("Baixando metadados: {0}", jogo.Name)
-                        : "Baixando metadados...";
-
-                    try
+                    foreach (var id in gameIds)
                     {
-                        if (downloader.Download(id, progressArgs.CancelToken, interativo)) atualizados++;
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.Error(ex, string.Format("Falha ao baixar metadados do jogo {0}.", id));
-                    }
+                        if (progressArgs.CancelToken.IsCancellationRequested) break;
 
-                    progressArgs.CurrentProgressValue++;
+                        var jogo = PlayniteApi.Database.Games.Get(id);
+                        progressArgs.Text = jogo != null
+                            ? string.Format("Baixando metadados: {0}", jogo.Name)
+                            : "Baixando metadados...";
+
+                        try
+                        {
+                            if (downloader.Download(id, progressArgs.CancelToken, interativo)) atualizados++;
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.Error(ex, string.Format("Falha ao baixar metadados do jogo {0}.", id));
+                        }
+
+                        progressArgs.CurrentProgressValue++;
+                    }
                 }
             }, new GlobalProgressOptions(
                 interativo ? "Buscando metadados (modo manual)..." : "Baixando metadados dos jogos...", true)
@@ -795,36 +804,42 @@ namespace BuscaDeJogosLocais
         {
             var alterados = new List<Guid>();
 
-            foreach (var item in selecionados)
+            // Alteração em lote entra em modo bufferizado: sem isso, cada Update dispara os eventos
+            // de notificação do banco e a interface se redesenha jogo a jogo — imperceptível em
+            // biblioteca pequena, travamento em biblioteca grande.
+            using (PlayniteApi.Database.BufferedUpdate())
             {
-                var jogo = PlayniteApi.Database.Games.Get(item.GameId);
-                if (jogo == null) continue;
-
-                try
+                foreach (var item in selecionados)
                 {
-                    bool mudou = false;
+                    var jogo = PlayniteApi.Database.Games.Get(item.GameId);
+                    if (jogo == null) continue;
 
-                    if (!string.IsNullOrEmpty(item.NomeNovo) && item.NomeNovo != jogo.Name)
+                    try
                     {
-                        jogo.Name = item.NomeNovo.Trim();
-                        mudou = true;
-                    }
+                        bool mudou = false;
 
-                    if (!string.IsNullOrEmpty(item.Versao) && item.Versao != jogo.Version)
-                    {
-                        jogo.Version = item.Versao.Trim();
-                        mudou = true;
-                    }
+                        if (!string.IsNullOrEmpty(item.NomeNovo) && item.NomeNovo != jogo.Name)
+                        {
+                            jogo.Name = item.NomeNovo.Trim();
+                            mudou = true;
+                        }
 
-                    if (mudou)
-                    {
-                        PlayniteApi.Database.Games.Update(jogo);
-                        alterados.Add(jogo.Id);
+                        if (!string.IsNullOrEmpty(item.Versao) && item.Versao != jogo.Version)
+                        {
+                            jogo.Version = item.Versao.Trim();
+                            mudou = true;
+                        }
+
+                        if (mudou)
+                        {
+                            PlayniteApi.Database.Games.Update(jogo);
+                            alterados.Add(jogo.Id);
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    logger.Error(ex, string.Format("Falha ao renomear o jogo {0}", item.NomeAtual));
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex, string.Format("Falha ao renomear o jogo {0}", item.NomeAtual));
+                    }
                 }
             }
 
