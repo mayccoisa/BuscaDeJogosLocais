@@ -205,6 +205,27 @@ namespace BuscaDeJogosLocais
         public bool Selecionado { get { return selecionado; } set { SetValue(ref selecionado, value); } }
     }
 
+    // Uma linha da prévia de "Completar Biblioteca": o console que o jogo de emulação vai passar
+    // a mostrar como Fonte, e de onde essa informação foi lida.
+    public class ConsoleLibraryItem : ObservableObject
+    {
+        public Guid GameId { get; set; }
+        public string NomeJogo { get; set; }
+        public string Emulador { get; set; }
+        public string Perfil { get; set; }
+        public string PlataformaDoJogo { get; set; }
+        public string BibliotecaAtual { get; set; }
+        /// <summary>De onde saiu a sugestão: "Emulador", "Plataforma do jogo" ou "—".</summary>
+        public string Origem { get; set; }
+        public string Situacao { get; set; }
+
+        private string bibliotecaNova;
+        public string BibliotecaNova { get { return bibliotecaNova; } set { SetValue(ref bibliotecaNova, value); } }
+
+        private bool selecionado;
+        public bool Selecionado { get { return selecionado; } set { SetValue(ref selecionado, value); } }
+    }
+
     public class IntegrityResult : ObservableObject
     {
         public Guid GameId { get; set; }
@@ -423,6 +444,7 @@ namespace BuscaDeJogosLocais
         public RelayCommand<object> MarkNotFoundAsUninstalledCommand { get; private set; }
         public RelayCommand<object> ApplyLocalSourceToExistingCommand { get; private set; }
         public RelayCommand<object> LimparNomesExistentesCommand { get; private set; }
+        public RelayCommand<object> CompletarBibliotecaCommand { get; private set; }
 
         // Resumo por pasta monitorada: quantos jogos dela estão na biblioteca e quantos ficaram de fora.
         public ObservableCollection<PastaResumo> PastasResumo { get; private set; }
@@ -815,6 +837,11 @@ namespace BuscaDeJogosLocais
                 }
 
                 plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) marcado(s) com a Fonte \"Local\".", atualizados), "Sucesso");
+            });
+
+            CompletarBibliotecaCommand = new RelayCommand<object>((_) =>
+            {
+                plugin.CompletarBibliotecaDeEmulacao();
             });
 
             LimparNomesExistentesCommand = new RelayCommand<object>((_) =>

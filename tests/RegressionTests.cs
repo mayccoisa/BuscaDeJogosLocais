@@ -178,6 +178,37 @@ class RegressionTests
         Eq("camelCase do titulo preservado", "EverSiege Untold Ages", LocalGameUtils.ToTitleCase("EverSiege Untold Ages"));
         Eq("null passa direto", null, LocalGameUtils.ToTitleCase(null));
 
+        // ---- EscolherNomeDeConsole ----
+        Console.WriteLine("[EscolherNomeDeConsole]");
+        Eq("perfil com um console manda", "Sony PlayStation 2",
+            LocalGameUtils.EscolherNomeDeConsole(new List<string> { "Sony PlayStation 2" }, "Sony PlayStation 2"));
+
+        Eq("sem perfil cai na plataforma do jogo", "Nintendo Switch",
+            LocalGameUtils.EscolherNomeDeConsole(null, "Nintendo Switch"));
+
+        Eq("perfil vazio cai na plataforma do jogo", "Nintendo Switch",
+            LocalGameUtils.EscolherNomeDeConsole(new List<string>(), "Nintendo Switch"));
+
+        Eq("perfil com varios consoles: plataforma do jogo desempata", "Nintendo Game Boy Color",
+            LocalGameUtils.EscolherNomeDeConsole(
+                new List<string> { "Nintendo Game Boy", "Nintendo Game Boy Color" }, "Nintendo Game Boy Color"));
+
+        Eq("perfil com varios consoles e jogo sem plataforma: fica o primeiro", "Nintendo Game Boy",
+            LocalGameUtils.EscolherNomeDeConsole(
+                new List<string> { "Nintendo Game Boy", "Nintendo Game Boy Color" }, ""));
+
+        Eq("perfil manda quando o jogo esta sem plataforma", "Sony PlayStation",
+            LocalGameUtils.EscolherNomeDeConsole(new List<string> { "Sony PlayStation" }, null));
+
+        Eq("nada de nada devolve vazio (nunca inventa console)", "",
+            LocalGameUtils.EscolherNomeDeConsole(null, null));
+
+        Eq("entrada so com espaco em branco nao vira console", "",
+            LocalGameUtils.EscolherNomeDeConsole(new List<string> { "   " }, "  "));
+
+        Eq("espaco em volta e aparado", "Sony PSP",
+            LocalGameUtils.EscolherNomeDeConsole(new List<string> { "  Sony PSP  " }, null));
+
         Console.WriteLine();
         Console.WriteLine(string.Format("Resultado: {0}/{1} passaram, {2} falha(s).", total - failures, total, failures));
         return failures == 0 ? 0 : 1;

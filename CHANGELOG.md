@@ -6,6 +6,16 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.8.0] - 2026-08-05
+
+### Adicionado
+- **Completar Biblioteca dos jogos de emulação.** Jogo de emulação entra na biblioteca sem Fonte nenhuma, então a tela de perfil do tema joga todos eles num balde só, ao lado de Steam e Xbox. O botão novo (aba "Pastas Monitoradas", e também no menu **Local › Completar Biblioteca**) lê o emulador e o perfil que cada jogo referencia e usa o **console** como Fonte: PlayStation 2, Nintendo Switch, PlayStation, Game Boy Advance, PSP. Aí o perfil passa a mostrar onde os seus jogos estão realmente concentrados.
+- O console sai da definição de emulador do próprio Playnite — o mesmo dado que ele usa para importar a ROM —, não de palpite sobre o nome da pasta ou do emulador. Quando o jogo não tem perfil de emulador definido, vale a plataforma que ele já tem; se não houver nenhuma das duas, a linha fica em branco para você preencher. Console nunca é inventado.
+- Antes de gravar aparece uma prévia com uma linha por jogo: emulador, biblioteca atual, console novo, de onde o console foi lido e o que muda. Dá para editar o nome na tabela e desmarcar linha a linha, e no topo fica o resumo de quantos jogos ficam em cada console. Nada é gravado até clicar em Aplicar.
+- Jogo que já tem Fonte de loja (Steam, Epic) aparece na lista mas **não** vem marcado: a fonte dele é informação de verdade e não é sobrescrita sem você mandar.
+
+---
+
 ## [0.7.3] - 2026-08-02
 
 ### Alterado

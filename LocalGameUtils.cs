@@ -297,6 +297,43 @@ namespace BuscaDeJogosLocais
             return new string(chars);
         }
 
+        /// <summary>
+        /// Decide qual nome de console vira a "biblioteca" (Fonte) de um jogo de emulação.
+        /// A ordem de confiança é: o que o perfil do emulador declara, depois a plataforma que o
+        /// próprio jogo já tem. Quando nenhuma das duas existe devolve vazio — nunca inventa
+        /// console a partir do nome do emulador, que é texto livre do usuário ("PS2", "New Emulator").
+        /// </summary>
+        public static string EscolherNomeDeConsole(List<string> plataformasDoPerfil, string plataformaDoJogo)
+        {
+            string doJogo = string.IsNullOrEmpty(plataformaDoJogo) ? string.Empty : plataformaDoJogo.Trim();
+
+            var doPerfil = new List<string>();
+            if (plataformasDoPerfil != null)
+            {
+                foreach (var p in plataformasDoPerfil)
+                {
+                    if (string.IsNullOrEmpty(p)) continue;
+                    string limpo = p.Trim();
+                    if (limpo.Length > 0) doPerfil.Add(limpo);
+                }
+            }
+
+            if (doPerfil.Count == 0) return doJogo;
+
+            // Um mesmo perfil pode cobrir mais de um console (um emulador de Game Boy que também
+            // roda Game Boy Color). Nesse caso quem desempata é a plataforma do próprio jogo.
+            if (doJogo.Length > 0)
+            {
+                foreach (var p in doPerfil)
+                {
+                    if (string.Equals(p, doJogo, StringComparison.OrdinalIgnoreCase)) return p;
+                }
+            }
+
+            if (doPerfil.Count == 1) return doPerfil[0];
+            return doJogo.Length > 0 ? doJogo : doPerfil[0];
+        }
+
         private static string StripReleaseGroup(string nome)
         {
             string atual = nome.TrimEnd('.', '-', '_', ' ');

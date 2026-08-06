@@ -105,6 +105,14 @@
                                     Command="{Binding ApplyLocalSourceToExistingCommand}"
                                     Padding="10,5" HorizontalAlignment="Left" Margin="25,0,0,0" Cursor="Hand" />
 
+                            <TextBlock Text="Jogos de emulação: biblioteca por console"
+                                       FontSize="14" FontWeight="Bold" Foreground="Gold" Margin="0,18,0,6" />
+                            <TextBlock TextWrapping="Wrap" FontStyle="Italic" Opacity="0.7" Margin="25,0,0,8" FontSize="11"
+                                       Text="Jogo de emulação entra na biblioteca sem Fonte nenhuma e some dentro do balde 'local'. Aqui a extensão lê o emulador (e o perfil) que cada jogo referencia e usa o console como Fonte: PlayStation 2, Nintendo Switch, Game Boy Advance. É o que faz a tela de perfil do tema mostrar onde seus jogos estão concentrados. Você confere e edita numa prévia antes de gravar." />
+                            <Button Content="🎮 Completar Biblioteca dos Jogos de Emulação"
+                                    Command="{Binding CompletarBibliotecaCommand}"
+                                    Padding="10,5" HorizontalAlignment="Left" Margin="25,0,0,0" Cursor="Hand" />
+
                             <TextBlock Text="Nome e versão" FontSize="14" FontWeight="Bold" Foreground="Gold" Margin="0,18,0,6" />
                             <CheckBox Content="Limpar o nome da pasta ao importar"
                                       IsChecked="{Binding Settings.LimparNomeDaPasta}"

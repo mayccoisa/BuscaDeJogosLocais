@@ -720,6 +720,13 @@ namespace BuscaDeJogosLocais
 
             yield return new MainMenuItem
             {
+                Description = "Completar Biblioteca (consoles de emulação)",
+                MenuSection = "@Local",
+                Action = (mainMenuItemArgs) => CompletarBibliotecaDeEmulacao()
+            };
+
+            yield return new MainMenuItem
+            {
                 Description = "Verificar Integridade da Biblioteca",
                 MenuSection = "@Local",
                 Action = (mainMenuItemArgs) => CheckLibraryIntegrity()
@@ -844,6 +851,263 @@ namespace BuscaDeJogosLocais
             }
 
             return alterados;
+        }
+
+        // ===================== BIBLIOTECA POR CONSOLE (jogos de emulação) =====================
+        //
+        // O tema (Aniki ReMake, e o Playnite nativo) agrupa a "biblioteca" pela Fonte do jogo:
+        // Steam, Epic, Local. Jogo de emulação entra sem Fonte nenhuma e cai todo no mesmo balde.
+        // Aqui a Fonte passa a ser o CONSOLE (PlayStation 2, Nintendo Switch...), lido do emulador
+        // que o próprio jogo referencia — não de palpite sobre o nome da pasta.
+
+        /// <summary>
+        /// Monta a prévia de "Completar Biblioteca": uma linha por jogo que tem ação de emulador,
+        /// com o console que o emulador declara. Não grava nada.
+        /// </summary>
+        public List<ConsoleLibraryItem> MapearBibliotecaDeEmulacao()
+        {
+            var itens = new List<ConsoleLibraryItem>();
+            var emuladores = PlayniteApi.Database.Emulators.ToList();
+            var nomesDeConsole = NomesDeConsoleConhecidos();
+
+            foreach (var game in PlayniteApi.Database.Games.ToList())
+            {
+                if (game.GameActions == null) continue;
+
+                GameAction acao = null;
+                foreach (var a in game.GameActions)
+                {
+                    if (a.Type == GameActionType.Emulator) { acao = a; break; }
+                }
+                if (acao == null) continue;
+
+                Emulator emulador = null;
+                foreach (var e in emuladores)
+                {
+                    if (e.Id == acao.EmulatorId) { emulador = e; break; }
+                }
+
+                string nomePerfil;
+                var plataformasPerfil = ResolverPlataformasDoPerfil(emulador, acao.EmulatorProfileId, out nomePerfil);
+                string plataformaJogo = PrimeiraPlataformaDoJogo(game);
+                string sugestao = LocalGameUtils.EscolherNomeDeConsole(plataformasPerfil, plataformaJogo);
+
+                string origem = "—";
+                if (plataformasPerfil.Count > 0 && !string.IsNullOrEmpty(sugestao)) origem = "Emulador";
+                else if (!string.IsNullOrEmpty(sugestao)) origem = "Plataforma do jogo";
+
+                string atual = NomeDaFonte(game.SourceId);
+
+                bool jaCerta = !string.IsNullOrEmpty(sugestao) && string.Equals(atual, sugestao, StringComparison.OrdinalIgnoreCase);
+                // Fonte de loja (Steam, Epic) não é sobrescrita sem o usuário mandar: o jogo pode ser
+                // uma compra de loja rodando em emulador, e a fonte ali é informação de verdade.
+                bool fonteAlheia = !string.IsNullOrEmpty(atual) && !nomesDeConsole.Contains(atual);
+
+                string situacao;
+                if (string.IsNullOrEmpty(sugestao)) situacao = "Sem console identificado";
+                else if (jaCerta) situacao = "Já está correta";
+                else if (string.IsNullOrEmpty(atual)) situacao = "Sem biblioteca";
+                else if (fonteAlheia) situacao = string.Format("Já tem a fonte \"{0}\"", atual);
+                else situacao = string.Format("Muda de \"{0}\"", atual);
+
+                itens.Add(new ConsoleLibraryItem
+                {
+                    GameId = game.Id,
+                    NomeJogo = game.Name,
+                    Emulador = emulador != null ? emulador.Name : "(emulador não encontrado)",
+                    Perfil = string.IsNullOrEmpty(nomePerfil) ? "—" : nomePerfil,
+                    PlataformaDoJogo = string.IsNullOrEmpty(plataformaJogo) ? "—" : plataformaJogo,
+                    BibliotecaAtual = string.IsNullOrEmpty(atual) ? "—" : atual,
+                    BibliotecaNova = sugestao,
+                    Origem = origem,
+                    Situacao = situacao,
+                    Selecionado = !string.IsNullOrEmpty(sugestao) && !jaCerta && !fonteAlheia
+                });
+            }
+
+            return itens.OrderBy(i => i.BibliotecaNova).ThenBy(i => i.NomeJogo).ToList();
+        }
+
+        /// <summary>
+        /// Plataformas que o perfil usado pelo jogo declara. Perfil personalizado aponta para
+        /// plataformas do banco; perfil embutido só carrega o nome, e o vínculo com o console mora
+        /// na definição que o Playnite distribui (Emulation/Emulators/*/emulator.yaml).
+        /// </summary>
+        private List<string> ResolverPlataformasDoPerfil(Emulator emulador, string profileId, out string nomePerfil)
+        {
+            nomePerfil = string.Empty;
+            var nomes = new List<string>();
+            if (emulador == null || string.IsNullOrEmpty(profileId)) return nomes;
+
+            if (emulador.CustomProfiles != null)
+            {
+                foreach (var perfil in emulador.CustomProfiles)
+                {
+                    if (perfil.Id != profileId) continue;
+                    nomePerfil = perfil.Name;
+                    if (perfil.Platforms == null) return nomes;
+
+                    foreach (var platformId in perfil.Platforms)
+                    {
+                        var plataforma = PlayniteApi.Database.Platforms.Get(platformId);
+                        if (plataforma != null && !string.IsNullOrEmpty(plataforma.Name)) nomes.Add(plataforma.Name);
+                    }
+                    return nomes;
+                }
+            }
+
+            if (emulador.BuiltinProfiles == null || string.IsNullOrEmpty(emulador.BuiltInConfigId)) return nomes;
+
+            foreach (var perfil in emulador.BuiltinProfiles)
+            {
+                if (perfil.Id != profileId) continue;
+                nomePerfil = perfil.Name;
+
+                EmulatorDefinition definicao = null;
+                foreach (var d in PlayniteApi.Emulation.Emulators)
+                {
+                    if (string.Equals(d.Id, emulador.BuiltInConfigId, StringComparison.OrdinalIgnoreCase)) { definicao = d; break; }
+                }
+                if (definicao == null || definicao.Profiles == null) return nomes;
+
+                EmulatorDefinitionProfile perfilDefinicao = null;
+                foreach (var dp in definicao.Profiles)
+                {
+                    if (string.Equals(dp.Name, perfil.BuiltInProfileName, StringComparison.OrdinalIgnoreCase)) { perfilDefinicao = dp; break; }
+                }
+                if (perfilDefinicao == null || perfilDefinicao.Platforms == null) return nomes;
+
+                foreach (var specId in perfilDefinicao.Platforms)
+                {
+                    foreach (var plataforma in PlayniteApi.Emulation.Platforms)
+                    {
+                        if (!string.Equals(plataforma.Id, specId, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!string.IsNullOrEmpty(plataforma.Name)) nomes.Add(plataforma.Name);
+                        break;
+                    }
+                }
+                return nomes;
+            }
+
+            return nomes;
+        }
+
+        private string PrimeiraPlataformaDoJogo(Game game)
+        {
+            if (game.PlatformIds == null) return string.Empty;
+            foreach (var id in game.PlatformIds)
+            {
+                var plataforma = PlayniteApi.Database.Platforms.Get(id);
+                if (plataforma != null && !string.IsNullOrEmpty(plataforma.Name)) return plataforma.Name;
+            }
+            return string.Empty;
+        }
+
+        private string NomeDaFonte(Guid sourceId)
+        {
+            if (sourceId == Guid.Empty) return string.Empty;
+            var fonte = PlayniteApi.Database.Sources.Get(sourceId);
+            return fonte != null && fonte.Name != null ? fonte.Name : string.Empty;
+        }
+
+        // Todo nome de console que o Playnite conhece (definições de emulação + plataformas do
+        // banco). Serve para separar "fonte que esta função escreveu" de "fonte de loja".
+        private HashSet<string> NomesDeConsoleConhecidos()
+        {
+            var nomes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                foreach (var p in PlayniteApi.Emulation.Platforms)
+                {
+                    if (!string.IsNullOrEmpty(p.Name)) nomes.Add(p.Name);
+                }
+            }
+            catch (Exception) { }
+
+            try
+            {
+                foreach (var p in PlayniteApi.Database.Platforms)
+                {
+                    if (!string.IsNullOrEmpty(p.Name)) nomes.Add(p.Name);
+                }
+            }
+            catch (Exception) { }
+
+            return nomes;
+        }
+
+        /// <summary>Grava a Fonte confirmada na prévia. Devolve os ids realmente alterados.</summary>
+        public List<Guid> AplicarBibliotecaDeConsole(List<ConsoleLibraryItem> selecionados)
+        {
+            var alterados = new List<Guid>();
+            if (selecionados == null) return alterados;
+
+            using (PlayniteApi.Database.BufferedUpdate())
+            {
+                foreach (var item in selecionados)
+                {
+                    if (item == null || string.IsNullOrEmpty(item.BibliotecaNova)) continue;
+
+                    var game = PlayniteApi.Database.Games.Get(item.GameId);
+                    if (game == null) continue;
+
+                    try
+                    {
+                        var fonte = PlayniteApi.Database.Sources.Add(item.BibliotecaNova.Trim());
+                        if (fonte == null || game.SourceId == fonte.Id) continue;
+
+                        game.SourceId = fonte.Id;
+                        PlayniteApi.Database.Games.Update(game);
+                        alterados.Add(game.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex, string.Format("Falha ao gravar a biblioteca do jogo {0}", item.NomeJogo));
+                    }
+                }
+            }
+
+            return alterados;
+        }
+
+        /// <summary>Abre a prévia de "Completar Biblioteca" e aplica o que o usuário confirmar.</summary>
+        public void CompletarBibliotecaDeEmulacao()
+        {
+            List<ConsoleLibraryItem> itens = null;
+            PlayniteApi.Dialogs.ActivateGlobalProgress(
+                (progressArgs) => { itens = MapearBibliotecaDeEmulacao(); },
+                new GlobalProgressOptions("Lendo os emuladores dos jogos...", false));
+
+            if (itens == null || itens.Count == 0)
+            {
+                PlayniteApi.Dialogs.ShowMessage(
+                    "Nenhum jogo de emulação encontrado na biblioteca.\n\n" +
+                    "Esta função lê o emulador que cada jogo referencia; jogos de PC (Steam, Epic, locais) não entram.",
+                    "Completar Biblioteca");
+                return;
+            }
+
+            var window = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+            {
+                ShowMaximizeButton = true,
+                ShowMinimizeButton = false
+            });
+            window.Title = string.Format("Completar Biblioteca ({0} jogo(s) de emulação)", itens.Count);
+            window.Width = 1050;
+            window.Height = 620;
+            window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+            var alterados = new List<Guid>();
+            window.Content = new ConsoleLibraryWindow(
+                new ObservableCollection<ConsoleLibraryItem>(itens),
+                (selecionados) => alterados.AddRange(AplicarBibliotecaDeConsole(selecionados)));
+            window.ShowDialog();
+
+            // Mensagem só depois que a modal fecha: diálogo aberto de dentro do callback nasce atrás dela.
+            if (alterados.Count == 0) return;
+            PlayniteApi.Dialogs.ShowMessage(
+                string.Format("{0} jogo(s) agora aparecem na biblioteca pelo console.", alterados.Count),
+                "Completar Biblioteca");
         }
 
         public void CheckLibraryIntegrity()

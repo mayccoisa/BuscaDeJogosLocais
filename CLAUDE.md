@@ -73,6 +73,7 @@ git push origin vX.Y.Z
 | `BuscaDeJogosLocaisSettingsView.xaml` | UI das configurações (TabControl com abas) |
 | `ScanResultWindow.xaml` | Janela standalone de resultados de scan (usada pelo menu e scan automático) |
 | `IntegrityResultView.xaml` | Janela de resultado da verificação de integridade |
+| `ConsoleLibraryWindow.xaml` | Prévia de "Completar Biblioteca": console (Fonte) de cada jogo de emulação, lido do emulador que o jogo referencia |
 | `tests/RegressionTests.cs` | Testes de regressão da lógica de `LocalGameUtils` (assertions próprias) |
 | `tests/run-tests.ps1` | Compila (csc.exe) e executa os testes — sem NuGet/SDK |
 | `.github/workflows/release.yml` | CI que empacota o `.pext` e publica o GitHub Release no push de tag `v*` |
