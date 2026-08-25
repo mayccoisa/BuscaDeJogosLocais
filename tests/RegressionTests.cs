@@ -338,6 +338,86 @@ class RegressionTests
         Check("empate tecnico derruba para Media", empate != null && !empate.Confiavel);
         Check("empate tecnico avisa no motivo", empate != null && empate.Motivo.Contains("confira antes"));
 
+
+        // ---- Executavel que mudou dentro da MESMA pasta (bug relatado na 0.9.0) ----
+        // O jogo continuava marcado como instalado apontando para um .exe inexistente, e o
+        // Playnite falhava no Jogar. A pasta certa era descartada por estar "ocupada" pelo
+        // proprio jogo, e nada pontuava o fato de a pasta ser a mesma.
+        Console.WriteLine("[Executavel mudou na mesma pasta]");
+
+        var mesmaPasta = LocalGameUtils.AvaliarRelocalizacao("Dark Souls III",
+            @"D:\Jogos\Dark Souls III", @"D:\Jogos\Dark Souls III\DarkSoulsIII.exe", 0,
+            @"D:\Jogos\Dark Souls III", @"D:\Jogos\Dark Souls III\Game\DS3.exe", 0);
+        Check("mesma pasta com outro exe e reconhecida", mesmaPasta != null);
+        Check("mesma pasta marca a flag", mesmaPasta != null && mesmaPasta.MesmaPasta);
+        Check("mesma pasta tem confianca alta", mesmaPasta != null && mesmaPasta.Confiavel);
+        Check("mesma pasta explica no motivo",
+            mesmaPasta != null && mesmaPasta.Motivo.Contains("a pasta continua a mesma"));
+
+        // Barra final e diferenca de caixa nao podem virar "outra pasta".
+        var mesmaPastaBarra = LocalGameUtils.AvaliarRelocalizacao("Dark Souls III",
+            @"D:\Jogos\Dark Souls III\", @"D:\Jogos\Dark Souls III\ds3.exe", 0,
+            @"d:\jogos\dark souls iii", @"d:\jogos\dark souls iii\bin\ds3.exe", 0);
+        Check("barra final e caixa nao criam pasta diferente",
+            mesmaPastaBarra != null && mesmaPastaBarra.MesmaPasta);
+        Check("EhMesmaPasta ignora barra final",
+            LocalGameUtils.EhMesmaPasta(@"D:\A\B\", @"D:\A\B"));
+        Check("EhMesmaPasta com null e false",
+            !LocalGameUtils.EhMesmaPasta(null, @"D:\A"));
+        Check("EhMesmaPasta distingue pastas de verdade",
+            !LocalGameUtils.EhMesmaPasta(@"D:\A\B", @"D:\A\C"));
+
+        // A propria pasta nao pode ser rebaixada por outra parecida no disco.
+        var propria = new LocalGameUtils.RelocationMatch { PastaCandidata = @"D:\Jogos\X", Pontos = 65, Motivo = "m", Confianca = "Alta", MesmaPasta = true };
+        var vizinha = new LocalGameUtils.RelocationMatch { PastaCandidata = @"E:\Jogos\X", Pontos = 63, Motivo = "n", Confianca = "Alta" };
+        var vencedorPropria = LocalGameUtils.MelhorCandidato(new List<LocalGameUtils.RelocationMatch> { vizinha, propria });
+        Check("pasta propria vence o empate tecnico",
+            vencedorPropria != null && vencedorPropria.MesmaPasta && vencedorPropria.Confiavel);
+        Check("pasta propria nao ganha aviso de empate",
+            vencedorPropria != null && !vencedorPropria.Motivo.Contains("confira antes"));
+
+        // ---- NaoEhOJogo / MelhorExeDaPasta ----
+        Console.WriteLine("[Escolha do executavel dentro da pasta]");
+        Check("unins000 nao e o jogo", LocalGameUtils.NaoEhOJogo(@"D:\J\unins000.exe"));
+        Check("uninstall nao e o jogo", LocalGameUtils.NaoEhOJogo(@"D:\J\UnInstall.EXE"));
+        Check("vcredist nao e o jogo", LocalGameUtils.NaoEhOJogo(@"D:\J\vcredist_x64.exe"));
+        Check("dxsetup nao e o jogo", LocalGameUtils.NaoEhOJogo(@"D:\J\DXSETUP.exe"));
+        Check("crash handler nao e o jogo", LocalGameUtils.NaoEhOJogo(@"D:\J\UnityCrashHandler64.exe"));
+        Check("o jogo em si passa", !LocalGameUtils.NaoEhOJogo(@"D:\J\eldenring.exe"));
+        Check("null nao e o jogo", LocalGameUtils.NaoEhOJogo(null));
+
+        var pastaComLixo = new List<string> {
+            @"D:\Jogos\Elden Ring\unins000.exe",
+            @"D:\Jogos\Elden Ring\_CommonRedist\vcredist_x64.exe",
+            @"D:\Jogos\Elden Ring\Game\eldenring.exe"
+        };
+        Check("o desinstalador nunca e proposto",
+            LocalGameUtils.MelhorExeDaPasta("Elden Ring", @"D:\Jogos\Elden Ring", @"D:\Jogos\Elden Ring\eldenring.exe",
+                @"D:\Jogos\Elden Ring", pastaComLixo) == @"D:\Jogos\Elden Ring\Game\eldenring.exe");
+
+        Check("mesmo nome de arquivo ganha de tudo",
+            LocalGameUtils.MelhorExeDaPasta("Jogo Qualquer", @"D:\A\Jogo", @"D:\A\Jogo\bin\alvo.exe",
+                @"E:\B\Jogo", new List<string> { @"E:\B\Jogo\outro.exe", @"E:\B\Jogo\bin\alvo.exe" })
+            == @"E:\B\Jogo\bin\alvo.exe");
+
+        Check("sem o exe antigo vale o nome do jogo",
+            LocalGameUtils.MelhorExeDaPasta("Hollow Knight", null, null,
+                @"E:\B\HK", new List<string> { @"E:\B\HK\launcher.exe", @"E:\B\HK\hollow knight.exe" })
+            == @"E:\B\HK\hollow knight.exe");
+
+        Check("raiz ganha de exe enterrado quando o resto empata",
+            LocalGameUtils.MelhorExeDaPasta("Nome Que Nao Casa", null, null,
+                @"E:\B\J", new List<string> { @"E:\B\J\Engine\Binaries\Win64\tool.exe", @"E:\B\J\jogo.exe" })
+            == @"E:\B\J\jogo.exe");
+
+        Check("pasta so com ferramenta nao devolve nada",
+            LocalGameUtils.MelhorExeDaPasta("Jogo", null, null,
+                @"E:\B\J", new List<string> { @"E:\B\J\unins000.exe", @"E:\B\J\setup.exe" }) == null);
+        Check("lista vazia de exe devolve null",
+            LocalGameUtils.MelhorExeDaPasta("Jogo", null, null, @"E:\B\J", new List<string>()) == null);
+        Check("lista null de exe devolve null",
+            LocalGameUtils.MelhorExeDaPasta("Jogo", null, null, @"E:\B\J", null) == null);
+
         Console.WriteLine();
         Console.WriteLine(string.Format("Resultado: {0}/{1} passaram, {2} falha(s).", total - failures, total, failures));
         return failures == 0 ? 0 : 1;

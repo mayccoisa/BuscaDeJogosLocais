@@ -270,11 +270,15 @@ namespace BuscaDeJogosLocais
         public string Motivo { get; set; }
         public string Confianca { get; set; }
 
+        // A pasta continua a mesma e só o executável mudou de nome ou de lugar. Chamar isso de
+        // "mudou de pasta" faria a tela contradizer o que o usuário vê no disco.
+        public bool SoOExe { get; set; }
+
         public bool TemNovaCasa { get { return !string.IsNullOrEmpty(NovaPasta); } }
 
         public string StatusSummary {
             get {
-                if (TemNovaCasa) return "Mudou de pasta";
+                if (TemNovaCasa) return SoOExe ? "Executável mudou" : "Mudou de pasta";
                 var s = new List<string>();
                 if (FolderMissing) s.Add("Pasta Ausente");
                 if (ExeMissing) s.Add("Executável Ausente");
@@ -1114,7 +1118,9 @@ namespace BuscaDeJogosLocais
                                 relinkItem.NovoInstallDirectory = achado.PastaCandidata;
                                 relinkItem.Motivo = achado.Motivo;
                                 relinkItem.Confianca = achado.Confianca;
-                                relinkItem.Status = achado.Confiavel ? "Mudou de pasta" : "Provável (confira)";
+                                relinkItem.Status = achado.MesmaPasta
+                                    ? "Executável mudou"
+                                    : (achado.Confiavel ? "Mudou de pasta" : "Provável (confira)");
                                 // Só a evidência forte nasce marcada. Confiança "Média" é convite a
                                 // olhar o motivo, não a apertar Relinkar no automático.
                                 relinkItem.Selecionado = achado.Confiavel;

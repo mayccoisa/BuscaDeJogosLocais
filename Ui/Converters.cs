@@ -144,6 +144,7 @@ namespace BuscaDeJogosLocais.Ui
             string s = value == null ? string.Empty : value.ToString();
 
             if (s.IndexOf("Mudou de pasta", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                s.IndexOf("Executável mudou", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 s.IndexOf("Reapontado", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 s.IndexOf("Tudo importado", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 s.IndexOf("Sem save", StringComparison.OrdinalIgnoreCase) >= 0 ||

@@ -562,6 +562,44 @@ namespace BuscaDeJogosLocais
         }
 
         /// <summary>
+        /// Lê os executáveis de UMA pasta específica, no mesmo formato do índice. Serve para a
+        /// pasta do próprio jogo, que pode estar fora das pastas monitoradas.
+        /// </summary>
+        private PastaEmDisco LerExesDaPasta(string pasta)
+        {
+            if (string.IsNullOrEmpty(pasta) || !Directory.Exists(pasta)) return null;
+
+            var item = new PastaEmDisco
+            {
+                Pasta = pasta,
+                PastaMonitoradaPai = null,
+                Exes = new List<ExeEmDisco>()
+            };
+
+            try
+            {
+                foreach (var file in SafeEnumerateFiles(pasta, "*.exe", System.Threading.CancellationToken.None))
+                {
+                    if (IsExplosiveFile(file)) continue;
+                    if (IsExcluded(file)) continue;
+
+                    long tamanho = 0;
+                    try { tamanho = new FileInfo(file).Length; }
+                    catch (Exception) { }
+
+                    item.Exes.Add(new ExeEmDisco { Caminho = file, Tamanho = tamanho });
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, string.Format("Erro ao ler os executáveis de {0}", pasta));
+                return null;
+            }
+
+            return item.Exes.Count == 0 ? null : item;
+        }
+
+        /// <summary>
         /// Procura, no índice de disco, a pasta que provavelmente é a nova casa de um jogo cuja
         /// pasta sumiu. Devolve null quando a evidência não chega ao mínimo — não sugerir nada
         /// é melhor que apontar o jogo errado, porque reapontar errado é o usuário perdendo o
@@ -574,11 +612,31 @@ namespace BuscaDeJogosLocais
             Game game, string exeAntigoCompleto,
             List<PastaEmDisco> indice, HashSet<string> pastasOcupadas)
         {
-            if (indice == null || indice.Count == 0) return null;
+            if (indice == null) return null;
 
             string nomeExeAntigo = string.IsNullOrEmpty(exeAntigoCompleto)
                 ? string.Empty
                 : Path.GetFileName(exeAntigoCompleto);
+
+            // A pasta do próprio jogo entra na busca. Ela pode estar fora das pastas
+            // monitoradas (biblioteca antiga, jogo importado à mão), e é justamente onde mora a
+            // resposta quando só o executável sumiu.
+            var busca = indice;
+            if (!string.IsNullOrEmpty(game.InstallDirectory) && Directory.Exists(game.InstallDirectory))
+            {
+                string minha = NormalizePath(game.InstallDirectory);
+                if (!indice.Any(p => NormalizePath(p.Pasta).Equals(minha, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var propria = LerExesDaPasta(game.InstallDirectory);
+                    if (propria != null)
+                    {
+                        busca = new List<PastaEmDisco>(indice);
+                        busca.Add(propria);
+                    }
+                }
+            }
+            indice = busca;
+            if (indice.Count == 0) return null;
 
             // Em quantas pastas do disco esse executável aparece? Um só lugar é o que transforma
             // "mesmo nome de arquivo" em resposta única (ver ReforcarPorExclusividade).
@@ -594,16 +652,34 @@ namespace BuscaDeJogosLocais
 
             var candidatos = new List<LocalGameUtils.RelocationMatch>();
 
+            string minhaPasta = string.IsNullOrEmpty(game.InstallDirectory)
+                ? string.Empty
+                : NormalizePath(game.InstallDirectory);
+
             foreach (var pasta in indice)
             {
-                if (pastasOcupadas != null && pastasOcupadas.Contains(NormalizePath(pasta.Pasta))) continue;
+                string chavePasta = NormalizePath(pasta.Pasta);
+                // "Ocupada" quer dizer ocupada por OUTRO jogo. A pasta que o próprio jogo já
+                // registra nunca é conflito: excluí-la era o que impedia a extensão de ver que
+                // o jogo continuava ali, só com outro executável.
+                bool ehMinha = minhaPasta.Length > 0 &&
+                               chavePasta.Equals(minhaPasta, StringComparison.OrdinalIgnoreCase);
+                if (!ehMinha && pastasOcupadas != null && pastasOcupadas.Contains(chavePasta)) continue;
 
-                // Dentro da pasta candidata, o executável que interessa é o de mesmo nome do
-                // antigo; não havendo, o primeiro serve para o casamento por nome de pasta.
-                var exe = pasta.Exes.FirstOrDefault(e => nomeExeAntigo.Length > 0 &&
-                              Path.GetFileName(e.Caminho).Equals(nomeExeAntigo, StringComparison.OrdinalIgnoreCase));
-                if (exe == null) exe = pasta.Exes.FirstOrDefault();
+                // Qual dos executáveis da pasta é o jogo. Pegar o primeiro da varredura era
+                // sorteio: numa pasta de repack o primeiro pode ser o desinstalador.
+                string caminhoEscolhido = LocalGameUtils.MelhorExeDaPasta(
+                    game.Name, game.InstallDirectory, exeAntigoCompleto,
+                    pasta.Pasta, pasta.Exes.Select(e => e.Caminho).ToList());
+                if (string.IsNullOrEmpty(caminhoEscolhido)) continue;
+
+                var exe = pasta.Exes.FirstOrDefault(e =>
+                    e.Caminho.Equals(caminhoEscolhido, StringComparison.OrdinalIgnoreCase));
                 if (exe == null) continue;
+                // O executável proposto tem que existir de verdade. O índice pode estar velho,
+                // e propor um caminho morto é reproduzir exatamente a falha que estamos
+                // corrigindo, só que com a extensão dizendo que resolveu.
+                if (!File.Exists(exe.Caminho)) continue;
 
                 var m = LocalGameUtils.AvaliarRelocalizacao(
                     game.Name,
@@ -1465,7 +1541,14 @@ namespace BuscaDeJogosLocais
 
                         bool ehEmulacao = game.GameActions != null &&
                                           game.GameActions.Any(a => a.Type == GameActionType.Emulator);
-                        var achado = ehEmulacao ? null : ProcurarNovaCasa(game, exeAntigo, indice, ocupadas);
+                        // Jogo de outra biblioteca (Steam, GOG, Epic) continua APARECENDO aqui,
+                        // porque saber que ele está quebrado é útil, mas não recebe proposta de
+                        // reapontamento: quem manda no caminho dele é o launcher dono, e gravar
+                        // uma ação de arquivo por cima é sequestrar o jogo.
+                        bool ehDeOutraBiblioteca = game.PluginId != Guid.Empty && game.PluginId != Id;
+                        var achado = (ehEmulacao || ehDeOutraBiblioteca)
+                            ? null
+                            : ProcurarNovaCasa(game, exeAntigo, indice, ocupadas);
 
                         PlayniteApi.MainView.UIDispatcher.Invoke(() =>
                         {
@@ -1480,6 +1563,7 @@ namespace BuscaDeJogosLocais
                                 NovoExe = achado == null ? null : achado.ExeCandidato,
                                 Motivo = achado == null ? null : achado.Motivo,
                                 Confianca = achado == null ? null : achado.Confianca,
+                                SoOExe = achado != null && achado.MesmaPasta,
                                 // Jogo que foi ENCONTRADO não nasce marcado: as duas ações desta
                                 // tela são destrutivas, e ele não precisa de nenhuma das duas.
                                 Selected = achado == null
@@ -1550,7 +1634,7 @@ namespace BuscaDeJogosLocais
                     if (alvos.Count == 0)
                     {
                         PlayniteApi.Dialogs.ShowMessage(
-                            "Selecione os jogos com status \"Mudou de pasta\" para reapontar.",
+                            "Selecione os jogos encontrados no disco (\"Mudou de pasta\" ou \"Executável mudou\") para reapontar.",
                             "Aviso");
                         return;
                     }

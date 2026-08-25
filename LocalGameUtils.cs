@@ -439,8 +439,23 @@ namespace BuscaDeJogosLocais
             "client", "startup", "bin", "win64", "win32", "shipping"
         };
 
+        // Executáveis que existem na pasta do jogo mas NÃO são o jogo. Propor um destes é o
+        // erro que faz o Playnite dizer "não foi possível iniciar": a extensão "encontra" o
+        // jogo, o usuário aperta Jogar e o que roda é o desinstalador do repack.
+        public static readonly string[] NaoEhOJogoExeNames =
+        {
+            "uninstall", "setup", "install", "installer",
+            "dxsetup", "directx", "dotnetfx", "oalinst", "ndp48-web",
+            "crashreport", "crashreporter", "crashhandler",
+            "unitycrashhandler64", "unitycrashhandler32", "ueprereqsetup_x64"
+        };
+
         public const int RelocationScoreAlta = 55;
         public const int RelocationScoreMinima = 35;
+        // A pasta registrada na biblioteca continua existindo e tem executável dentro: o jogo
+        // não mudou de casa, mudou de porta. É o sinal mais forte que existe, porque a pasta
+        // não é um palpite — é o caminho que a própria biblioteca já guardava.
+        public const int RelocationScoreMesmaPasta = 40;
 
         public class RelocationMatch
         {
@@ -449,8 +464,88 @@ namespace BuscaDeJogosLocais
             public int Pontos { get; set; }
             public string Motivo { get; set; }
             public string Confianca { get; set; }   // "Alta" | "Média"
+            // A pasta candidata É a pasta que o jogo já tinha; só o executável mudou.
+            public bool MesmaPasta { get; set; }
             // True só quando a evidência é forte o bastante para a linha já nascer marcada.
             public bool Confiavel { get { return Pontos >= RelocationScoreAlta; } }
+        }
+
+        // Desinstalador, redistribuível e relator de erro moram na mesma pasta do jogo e seriam
+        // escolhidos por qualquer regra que olhe só "é um .exe aqui dentro".
+        public static bool NaoEhOJogo(string exePath)
+        {
+            if (string.IsNullOrEmpty(exePath)) return true;
+            string nome = Path.GetFileNameWithoutExtension(exePath);
+            if (string.IsNullOrEmpty(nome)) return true;
+            nome = nome.ToLowerInvariant();
+            foreach (string p in NaoEhOJogoExeNames)
+            {
+                if (nome == p) return true;
+            }
+            // Variações numeradas: unins000, unins001, vcredist_x64, vc_redist.x86...
+            if (nome.StartsWith("unins", StringComparison.Ordinal)) return true;
+            if (nome.StartsWith("vcredist", StringComparison.Ordinal)) return true;
+            if (nome.StartsWith("vc_redist", StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        public static bool EhMesmaPasta(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+            return NormalizePath(a).Equals(NormalizePath(b), StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Escolhe, entre os executáveis de UMA pasta, qual é provavelmente o jogo. Sem isto,
+        /// quem procurava a nova casa pegava o primeiro .exe que a varredura devolvesse — ordem
+        /// do sistema de arquivos, não evidência — e era assim que o reparo podia devolver
+        /// "unins000.exe" como se fosse o jogo. Devolve null quando só há ferramenta na pasta.
+        /// </summary>
+        public static string MelhorExeDaPasta(
+            string nomeDoJogo, string pastaAntiga, string exeAntigo,
+            string pastaCandidata, IList<string> exesDaPasta)
+        {
+            if (exesDaPasta == null || exesDaPasta.Count == 0) return null;
+
+            string nomeExeAntigo = string.IsNullOrEmpty(exeAntigo) ? string.Empty : Path.GetFileName(exeAntigo);
+            string relAntigo = CaminhoRelativoDoExe(pastaAntiga, exeAntigo);
+            string slugJogo = SlugForMatch(nomeDoJogo);
+
+            string melhor = null;
+            int melhorPontos = int.MinValue;
+
+            foreach (string exe in exesDaPasta)
+            {
+                if (string.IsNullOrEmpty(exe)) continue;
+                if (NaoEhOJogo(exe)) continue;
+
+                int p = 0;
+                string nomeArquivo = Path.GetFileName(exe);
+
+                if (nomeExeAntigo.Length > 0 && nomeArquivo.Equals(nomeExeAntigo, StringComparison.OrdinalIgnoreCase))
+                    p += 50;
+
+                string rel = CaminhoRelativoDoExe(pastaCandidata, exe);
+                if (relAntigo.Length > 0 && rel.Equals(relAntigo, StringComparison.OrdinalIgnoreCase))
+                    p += 30;
+
+                string slugArquivo = SlugForMatch(Path.GetFileNameWithoutExtension(exe));
+                if (slugJogo.Length >= 3 && slugArquivo == slugJogo) p += 25;
+                else if (slugJogo.Length >= 4 && slugArquivo.Length >= 4 &&
+                         (slugArquivo.Contains(slugJogo) || slugJogo.Contains(slugArquivo))) p += 12;
+
+                if (!IsGenericExeName(exe)) p += 6;
+
+                // Executável na raiz do jogo vale mais que um enterrado quatro níveis abaixo,
+                // que costuma ser ferramenta da engine.
+                int profundidade = 0;
+                foreach (char c in rel) { if (c == Path.DirectorySeparatorChar) profundidade++; }
+                p -= profundidade * 3;
+
+                if (p > melhorPontos) { melhorPontos = p; melhor = exe; }
+            }
+
+            return melhor;
         }
 
         public static bool IsGenericExeName(string exePath)
@@ -599,9 +694,23 @@ namespace BuscaDeJogosLocais
                 motivos.Add(motivoNome);
             }
 
+            // --- 5. A pasta é a MESMA que a biblioteca já registrava ---
+            // Este caso não é mudança de casa: a pasta continua lá, o que sumiu foi o
+            // executável (repack atualizado que renomeou o launcher, exe movido para uma
+            // subpasta). Antes ele não pontuava, e a pasta certa ainda era descartada por
+            // estar "ocupada" — pelo próprio jogo. Resultado: o Playnite mantinha o jogo como
+            // instalado apontando para um arquivo que não existe mais, e o Jogar falhava.
+            bool mesmaPasta = EhMesmaPasta(pastaAntiga, pastaCandidata);
+            if (mesmaPasta)
+            {
+                pontos += RelocationScoreMesmaPasta;
+                motivos.Add("a pasta continua a mesma; o que mudou foi o executável");
+            }
+
             if (pontos < RelocationScoreMinima) return null;
 
             var m = new RelocationMatch();
+            m.MesmaPasta = mesmaPasta;
             m.PastaCandidata = pastaCandidata;
             m.ExeCandidato = exeCandidato;
             m.Pontos = pontos;
@@ -643,6 +752,9 @@ namespace BuscaDeJogosLocais
             if (ordenados.Count == 0) return null;
 
             RelocationMatch melhor = ordenados[0];
+            // Empate não rebaixa quando o vencedor é a própria pasta do jogo: outra pasta
+            // parecida no disco não põe em dúvida o caminho que a biblioteca já guardava.
+            if (melhor.MesmaPasta) return melhor;
             if (ordenados.Count > 1 && (melhor.Pontos - ordenados[1].Pontos) < 10)
             {
                 melhor.Confianca = "Média";

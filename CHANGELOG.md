@@ -6,6 +6,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.9.1] - 2026-08-25
+
+### Corrigido
+- **Jogo cujo executável mudou dentro da própria pasta agora é reconhecido e reapontado.** A 0.9.0 resolveu a pasta que muda de lugar, mas deixou de fora o caso oposto: a pasta continua exatamente onde estava e o que mudou foi o executável, que virou repack atualizado, mudou de nome ou desceu para uma subpasta. O jogo seguia marcado como instalado apontando para um arquivo que não existe mais, e o Playnite respondia "não foi possível iniciar o jogo, o sistema não pode encontrar o arquivo especificado". A causa: a pasta certa era descartada da busca por estar "ocupada" — pelo próprio jogo. Agora ela entra na busca, o novo executável é encontrado dentro dela, e a situação aparece como "Executável mudou".
+- **A extensão parou de poder propor o desinstalador como se fosse o jogo.** Ao vasculhar uma pasta candidata, ela ficava com o primeiro `.exe` que a varredura devolvesse, que é ordem do sistema de arquivos e não evidência. Numa pasta de repack o primeiro costuma ser `unins000.exe`, `vcredist_x64.exe` ou o relator de erro da engine. Desinstalador, instalador, redistribuível e relator de erro agora ficam de fora, e entre os executáveis restantes vence o que tem o nome do arquivo antigo, a mesma estrutura interna de pastas, ou o nome do jogo.
+- **O caminho proposto é conferido antes de aparecer na tela.** Se o arquivo não existir mais no momento da conferência, ele não é oferecido: propor um caminho morto seria repetir a mesma falha, com a extensão dizendo que resolveu.
+- **A pasta do próprio jogo entra na busca mesmo estando fora das pastas monitoradas.** Biblioteca antiga e jogo importado à mão ficavam sem resposta possível.
+- **Jogo de outra biblioteca (Steam, GOG, Epic) não recebe mais proposta de reapontamento.** Ele continua aparecendo na verificação de integridade, porque saber que está quebrado é útil, mas quem manda no caminho dele é o launcher dono: gravar uma ação de arquivo por cima sequestraria o jogo.
+
+---
+
 ## [0.9.0] - 2026-08-24
 
 ### Corrigido
