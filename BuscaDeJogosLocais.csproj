@@ -45,6 +45,32 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Ui\Converters.cs" />
+    <Compile Include="Ui\UiKit.cs" />
+    <Compile Include="Ui\InicioPage.xaml.cs">
+      <DependentUpon>InicioPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Ui\BuscaPage.xaml.cs">
+      <DependentUpon>BuscaPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Ui\PastasPage.xaml.cs">
+      <DependentUpon>PastasPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Ui\ReparoPage.xaml.cs">
+      <DependentUpon>ReparoPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Ui\DuplicadosPage.xaml.cs">
+      <DependentUpon>DuplicadosPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Ui\HistoricoPage.xaml.cs">
+      <DependentUpon>HistoricoPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Ui\AjustesPage.xaml.cs">
+      <DependentUpon>AjustesPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Ui\AtualizacoesPage.xaml.cs">
+      <DependentUpon>AtualizacoesPage.xaml</DependentUpon>
+    </Compile>
     <Compile Include="BuscaDeJogosLocais.cs" />
     <Compile Include="LocalGameUtils.cs" />
     <Compile Include="UpdateChecker.cs" />
@@ -70,6 +96,42 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Page Include="Ui\Theme.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\InicioPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\BuscaPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\PastasPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\ReparoPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\DuplicadosPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\HistoricoPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\AjustesPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\AtualizacoesPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="BuscaDeJogosLocaisSettingsView.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>

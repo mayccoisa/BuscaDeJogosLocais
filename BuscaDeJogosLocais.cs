@@ -125,6 +125,13 @@ namespace BuscaDeJogosLocais
                     }
                 }
                 
+                // Reconciliação: pasta nova no disco + jogo da biblioteca cuja pasta sumiu podem
+                // ser a MESMA instalação que mudou de lugar. Sem esta passada o scan devolvia os
+                // dois lados como problemas separados — um "jogo novo" para importar e um registro
+                // "ausente" para desinstalar —, e importar criava o jogo duplicado.
+                try { ReconciliarPastasMovidas(gamesFoundMap, progressArgs.CancelToken); }
+                catch (Exception ex) { logger.Error(ex, "Erro ao reconciliar pastas movidas"); }
+
                 var finalResults = gamesFoundMap.Values.OrderBy(g => g.Nome).ToList();
                 PlayniteApi.MainView.UIDispatcher.Invoke(() => {
                     foreach (var g in finalResults) listToPopulate.Add(g);
@@ -222,7 +229,8 @@ namespace BuscaDeJogosLocais
                 {
                     BaixarMetadadosDosImportados(ImportarLote(selecionados));
                 },
-                ignorar: (jogo) => AdicionarExcluido(jogo)
+                ignorar: (jogo) => AdicionarExcluido(jogo),
+                reapontar: (movidos) => ReapontarLote(movidos)
             );
             window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
             window.ShowDialog();
@@ -264,7 +272,8 @@ namespace BuscaDeJogosLocais
                     {
                         BaixarMetadadosDosImportados(ImportarLote(selecionados));
                     },
-                    ignorar: (jogo) => AdicionarExcluido(jogo)
+                    ignorar: (jogo) => AdicionarExcluido(jogo),
+                    reapontar: (movidos) => ReapontarLote(movidos)
                 );
                 window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
                 window.ShowDialog();
@@ -336,6 +345,286 @@ namespace BuscaDeJogosLocais
             return LocalGameUtils.GetGameRoot(filePath, monitoredPaths, out monitoredPai);
         }
 
+        /// <summary>
+        /// Casa as pastas recém-encontradas no disco com os jogos da biblioteca cuja pasta sumiu.
+        /// O que casa deixa de ser "jogo novo para importar" e passa a ser "mudou de pasta",
+        /// desmarcado — reapontar é decisão do usuário, e importar sem reconciliar duplicaria o jogo.
+        /// </summary>
+        private void ReconciliarPastasMovidas(Dictionary<string, ScannedGame> encontrados, System.Threading.CancellationToken cancelToken)
+        {
+            var novos = encontrados.Values.Where(g => !g.JaExiste).ToList();
+            if (novos.Count == 0) return;
+
+            var perdidos = PlayniteApi.Database.Games
+                .Where(g => (g.PluginId == Guid.Empty || g.PluginId == Id) &&
+                            !string.IsNullOrEmpty(g.InstallDirectory) &&
+                            !Directory.Exists(g.InstallDirectory))
+                .Where(g => g.GameActions == null || !g.GameActions.Any(a => a.Type == GameActionType.Emulator))
+                .ToList();
+            if (perdidos.Count == 0) return;
+
+            // As pastas recém-vistas viram um índice do mesmo formato que o do reparo, para os
+            // dois caminhos usarem exatamente a mesma régua de evidência.
+            var indice = novos.Select(n => new PastaEmDisco
+            {
+                Pasta = n.PastaRaiz,
+                PastaMonitoradaPai = n.PastaMonitoradaPai,
+                Exes = new List<ExeEmDisco> { new ExeEmDisco { Caminho = n.CaminhoExe, Tamanho = TamanhoDe(n.CaminhoExe) } }
+            }).ToList();
+
+            var ocupadas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var g in PlayniteApi.Database.Games)
+            {
+                if (string.IsNullOrEmpty(g.InstallDirectory)) continue;
+                if (!Directory.Exists(g.InstallDirectory)) continue;
+                ocupadas.Add(NormalizePath(g.InstallDirectory));
+            }
+
+            // Uma pasta nova só pode ser a casa de UM jogo perdido. Quem chega primeiro com mais
+            // pontos fica com ela; o segundo continua perdido, em vez de os dois apontarem para lá.
+            var tomadas = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var game in perdidos)
+            {
+                if (cancelToken.IsCancellationRequested) return;
+
+                string exeAntigo = null;
+                if (game.GameActions != null)
+                {
+                    var fa = game.GameActions.FirstOrDefault(a => a.Type == GameActionType.File);
+                    if (fa != null && !string.IsNullOrEmpty(fa.Path)) exeAntigo = PlayniteApi.ExpandGameVariables(game, fa.Path);
+                }
+
+                var achado = ProcurarNovaCasa(game, exeAntigo, indice, ocupadas);
+                if (achado == null) continue;
+
+                string chave = NormalizePath(achado.PastaCandidata);
+                int pontosDoDono;
+                if (tomadas.TryGetValue(chave, out pontosDoDono) && pontosDoDono >= achado.Pontos) continue;
+
+                var alvo = encontrados.Values.FirstOrDefault(n => NormalizePath(n.PastaRaiz).Equals(chave, StringComparison.OrdinalIgnoreCase));
+                if (alvo == null) continue;
+
+                tomadas[chave] = achado.Pontos;
+                alvo.MovidoDeGameId = game.Id;
+                alvo.MovidoDePasta = game.InstallDirectory;
+                alvo.MovidoDeNome = game.Name;
+                alvo.MotivoMudanca = achado.Motivo;
+                alvo.ConfiancaMudanca = achado.Confianca;
+                // Nunca pré-marcado: marcado aqui significaria IMPORTAR, que é justamente
+                // criar o duplicado que esta reconciliação existe para impedir.
+                alvo.Selecionado = false;
+            }
+        }
+
+        /// <summary>
+        /// Reaponta em lote as pastas que a reconciliação reconheceu como mudança de lugar, e
+        /// devolve quantas foram. Usada pela janela do scan (menu) e pela aba de busca, para as
+        /// duas telas fazerem exatamente a mesma coisa.
+        /// </summary>
+        public int ReapontarLote(List<ScannedGame> movidos)
+        {
+            if (movidos == null || movidos.Count == 0) return 0;
+
+            int ok = 0;
+            using (PlayniteApi.Database.BufferedUpdate())
+            {
+                foreach (var m in movidos)
+                {
+                    if (!m.EhMudancaDePasta) continue;
+                    if (!RelocarJogo(m.MovidoDeGameId, m.PastaRaiz, m.CaminhoExe)) continue;
+
+                    m.MovidoDeGameId = Guid.Empty;
+                    m.JaExiste = true;
+                    m.Selecionado = false;
+                    ok++;
+                }
+            }
+
+            PlayniteApi.Dialogs.ShowMessage(
+                string.Format("{0} jogo(s) reapontados para a pasta onde estão hoje.", ok),
+                "Reapontar");
+            return ok;
+        }
+
+        private static long TamanhoDe(string caminho)
+        {
+            if (string.IsNullOrEmpty(caminho)) return 0;
+            try { return new FileInfo(caminho).Length; }
+            catch (Exception) { return 0; }
+        }
+
+        /// <summary>
+        /// Reaponta um jogo da biblioteca para a pasta onde ele está hoje: caminho de instalação,
+        /// ação de arquivo e o estado "instalado". Devolve false quando não havia o que mudar.
+        /// Não mexe em nome, capa, tags nem tempo de jogo — o registro é o mesmo, só mudou de casa.
+        /// </summary>
+        public bool RelocarJogo(Guid gameId, string novaPasta, string novoExe)
+        {
+            var game = PlayniteApi.Database.Games.Get(gameId);
+            if (game == null) return false;
+            if (string.IsNullOrEmpty(novaPasta) || !Directory.Exists(novaPasta)) return false;
+
+            game.InstallDirectory = novaPasta;
+            game.IsInstalled = true;
+
+            if (!string.IsNullOrEmpty(novoExe))
+            {
+                if (game.GameActions == null) game.GameActions = new ObservableCollection<GameAction>();
+                var fileAction = game.GameActions.FirstOrDefault(a => a.Type == GameActionType.File);
+                if (fileAction == null)
+                {
+                    game.GameActions.Add(new GameAction { Type = GameActionType.File, Path = novoExe, Name = "Jogar", WorkingDir = "{InstallDir}" });
+                }
+                else
+                {
+                    fileAction.Path = novoExe;
+                    fileAction.WorkingDir = "{InstallDir}";
+                }
+            }
+
+            PlayniteApi.Database.Games.Update(game);
+
+            // O jogo voltou: se ele estava no histórico de desinstalações, a linha de lá deixou de
+            // ser verdade. Manter faria a aba "Desinstalados" contradizer a biblioteca.
+            try
+            {
+                if (settings.Settings.HistoricoDesinstalacoes != null)
+                {
+                    var entrada = settings.Settings.HistoricoDesinstalacoes.FirstOrDefault(h => h.GameId == gameId);
+                    if (entrada != null) settings.Settings.HistoricoDesinstalacoes.Remove(entrada);
+                    SavePluginSettings(settings.Settings);
+                }
+            }
+            catch (Exception) { }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Varre as pastas monitoradas UMA vez e devolve o índice de pastas de jogo em disco,
+        /// com os executáveis de cada uma e o tamanho deles.
+        /// A busca antiga do reparo varria a árvore inteira POR JOGO perdido; com dez jogos
+        /// ausentes e uma biblioteca grande isso é a mesma leitura de disco repetida dez vezes.
+        /// Aqui a varredura acontece uma vez e todo mundo consulta o mesmo índice.
+        /// </summary>
+        public List<PastaEmDisco> IndexarPastasEmDisco(System.Threading.CancellationToken cancelToken)
+        {
+            var porPasta = new Dictionary<string, PastaEmDisco>(StringComparer.OrdinalIgnoreCase);
+            if (settings.Settings.Pastas == null) return new List<PastaEmDisco>();
+
+            var monitoredPaths = settings.Settings.Pastas.Select(p => NormalizePath(p)).ToList();
+
+            foreach (var pasta in settings.Settings.Pastas)
+            {
+                if (cancelToken.IsCancellationRequested) break;
+                if (!Directory.Exists(pasta)) continue;
+
+                try
+                {
+                    foreach (var file in SafeEnumerateFiles(pasta, "*.exe", cancelToken))
+                    {
+                        if (cancelToken.IsCancellationRequested) break;
+                        if (IsExplosiveFile(file)) continue;
+                        if (IsExcluded(file)) continue;
+
+                        string monitoradoPai;
+                        string gameRoot = GetGameRootInternal(file, monitoredPaths, out monitoradoPai);
+                        if (string.IsNullOrEmpty(gameRoot)) continue;
+
+                        string chave = NormalizePath(gameRoot);
+                        PastaEmDisco alvo;
+                        if (!porPasta.TryGetValue(chave, out alvo))
+                        {
+                            alvo = new PastaEmDisco
+                            {
+                                Pasta = gameRoot,
+                                PastaMonitoradaPai = monitoradoPai,
+                                Exes = new List<ExeEmDisco>()
+                            };
+                            porPasta[chave] = alvo;
+                        }
+
+                        long tamanho = 0;
+                        try { tamanho = new FileInfo(file).Length; }
+                        catch (Exception) { }
+
+                        alvo.Exes.Add(new ExeEmDisco { Caminho = file, Tamanho = tamanho });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(ex, string.Format("Erro ao indexar {0}", pasta));
+                }
+            }
+
+            return porPasta.Values.ToList();
+        }
+
+        /// <summary>
+        /// Procura, no índice de disco, a pasta que provavelmente é a nova casa de um jogo cuja
+        /// pasta sumiu. Devolve null quando a evidência não chega ao mínimo — não sugerir nada
+        /// é melhor que apontar o jogo errado, porque reapontar errado é o usuário perdendo o
+        /// vínculo do jogo certo sem perceber.
+        ///
+        /// 'pastasOcupadas' são as pastas que outro jogo da biblioteca já reivindica: relocar
+        /// para cima delas criaria dois registros apontando para a mesma instalação.
+        /// </summary>
+        public LocalGameUtils.RelocationMatch ProcurarNovaCasa(
+            Game game, string exeAntigoCompleto,
+            List<PastaEmDisco> indice, HashSet<string> pastasOcupadas)
+        {
+            if (indice == null || indice.Count == 0) return null;
+
+            string nomeExeAntigo = string.IsNullOrEmpty(exeAntigoCompleto)
+                ? string.Empty
+                : Path.GetFileName(exeAntigoCompleto);
+
+            // Em quantas pastas do disco esse executável aparece? Um só lugar é o que transforma
+            // "mesmo nome de arquivo" em resposta única (ver ReforcarPorExclusividade).
+            int pastasComEsseExe = 0;
+            if (nomeExeAntigo.Length > 0)
+            {
+                foreach (var p in indice)
+                {
+                    if (p.Exes.Any(e => Path.GetFileName(e.Caminho).Equals(nomeExeAntigo, StringComparison.OrdinalIgnoreCase)))
+                        pastasComEsseExe++;
+                }
+            }
+
+            var candidatos = new List<LocalGameUtils.RelocationMatch>();
+
+            foreach (var pasta in indice)
+            {
+                if (pastasOcupadas != null && pastasOcupadas.Contains(NormalizePath(pasta.Pasta))) continue;
+
+                // Dentro da pasta candidata, o executável que interessa é o de mesmo nome do
+                // antigo; não havendo, o primeiro serve para o casamento por nome de pasta.
+                var exe = pasta.Exes.FirstOrDefault(e => nomeExeAntigo.Length > 0 &&
+                              Path.GetFileName(e.Caminho).Equals(nomeExeAntigo, StringComparison.OrdinalIgnoreCase));
+                if (exe == null) exe = pasta.Exes.FirstOrDefault();
+                if (exe == null) continue;
+
+                var m = LocalGameUtils.AvaliarRelocalizacao(
+                    game.Name,
+                    game.InstallDirectory, exeAntigoCompleto, 0,
+                    pasta.Pasta, exe.Caminho, exe.Tamanho);
+
+                if (m == null) continue;
+
+                bool exeIgual = nomeExeAntigo.Length > 0 &&
+                                Path.GetFileName(exe.Caminho).Equals(nomeExeAntigo, StringComparison.OrdinalIgnoreCase);
+                if (exeIgual)
+                {
+                    m = LocalGameUtils.ReforcarPorExclusividade(m, exeAntigoCompleto, pastasComEsseExe);
+                }
+
+                candidatos.Add(m);
+            }
+
+            return LocalGameUtils.MelhorCandidato(candidatos);
+        }
+
         public bool ImportarJogoManual(ScannedGame scanned)
         {
             Guid ignorado;
@@ -370,6 +659,12 @@ namespace BuscaDeJogosLocais
         public bool ImportarJogoManual(ScannedGame scanned, out Guid gameId)
         {
             gameId = Guid.Empty;
+
+            // Pasta que a reconciliação já reconheceu como a nova casa de um jogo existente não é
+            // importação: importar aqui criaria o segundo registro do MESMO jogo, com o tempo de
+            // jogo e as capas do original ficando para trás no registro antigo.
+            if (scanned.EhMudancaDePasta) return false;
+
             string normRoot = NormalizePath(scanned.PastaRaiz);
             if (PlayniteApi.Database.Games.Any(g => g.InstallDirectory != null && NormalizePath(g.InstallDirectory).Equals(normRoot, StringComparison.OrdinalIgnoreCase)))
                 return false;
@@ -1116,6 +1411,21 @@ namespace BuscaDeJogosLocais
             PlayniteApi.Dialogs.ActivateGlobalProgress((progressArgs) =>
             {
                 var games = PlayniteApi.Database.Games.ToList();
+
+                // A verificação só sabia dizer o que sumiu, e as duas saídas que ela oferecia
+                // (remover ou desinstalar) eram destrutivas. Indexar o disco antes deixa a tela
+                // dizer também PARA ONDE o jogo foi — que é a resposta certa na maioria dos casos.
+                progressArgs.Text = "Lendo as pastas monitoradas...";
+                var indice = IndexarPastasEmDisco(progressArgs.CancelToken);
+                var ocupadas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var g in games)
+                {
+                    if (string.IsNullOrEmpty(g.InstallDirectory)) continue;
+                    if (!Directory.Exists(g.InstallDirectory)) continue;
+                    ocupadas.Add(NormalizePath(g.InstallDirectory));
+                }
+                progressArgs.Text = "Verificando integridade da biblioteca...";
+
                 foreach (var game in games)
                 {
                     if (progressArgs.CancelToken.IsCancellationRequested) break;
@@ -1146,6 +1456,17 @@ namespace BuscaDeJogosLocais
 
                     if (folderMissing || exeMissing)
                     {
+                        string exeAntigo = null;
+                        if (game.GameActions != null)
+                        {
+                            var fa = game.GameActions.FirstOrDefault(a => a.Type == GameActionType.File);
+                            if (fa != null && !string.IsNullOrEmpty(fa.Path)) exeAntigo = PlayniteApi.ExpandGameVariables(game, fa.Path);
+                        }
+
+                        bool ehEmulacao = game.GameActions != null &&
+                                          game.GameActions.Any(a => a.Type == GameActionType.Emulator);
+                        var achado = ehEmulacao ? null : ProcurarNovaCasa(game, exeAntigo, indice, ocupadas);
+
                         PlayniteApi.MainView.UIDispatcher.Invoke(() =>
                         {
                             results.Add(new IntegrityResult
@@ -1155,7 +1476,13 @@ namespace BuscaDeJogosLocais
                                 InstallDir = game.InstallDirectory,
                                 FolderMissing = folderMissing,
                                 ExeMissing = exeMissing,
-                                Selected = true
+                                NovaPasta = achado == null ? null : achado.PastaCandidata,
+                                NovoExe = achado == null ? null : achado.ExeCandidato,
+                                Motivo = achado == null ? null : achado.Motivo,
+                                Confianca = achado == null ? null : achado.Confianca,
+                                // Jogo que foi ENCONTRADO não nasce marcado: as duas ações desta
+                                // tela são destrutivas, e ele não precisa de nenhuma das duas.
+                                Selected = achado == null
                             });
                         });
                     }
@@ -1196,17 +1523,48 @@ namespace BuscaDeJogosLocais
                 },
                 onMarkUninstalled: (selectedItems) =>
                 {
-                    if (selectedItems.Count == 0)
+                    // Item que a busca encontrou no disco fica de fora mesmo se marcado à mão:
+                    // marcar como desinstalado o jogo que está ali, funcionando, é o erro que
+                    // esta rodada corrige.
+                    var alvos = selectedItems.Where(i => !i.TemNovaCasa).ToList();
+                    if (alvos.Count == 0)
                     {
-                        PlayniteApi.Dialogs.ShowMessage("Nenhum item selecionado.", "Aviso");
+                        PlayniteApi.Dialogs.ShowMessage(
+                            selectedItems.Count == 0
+                                ? "Nenhum item selecionado."
+                                : "Os itens selecionados foram encontrados no disco — use \"Reapontar\" neles, em vez de marcar como desinstalados.",
+                            "Aviso");
                         return;
                     }
                     int marcados = 0;
-                    foreach (var item in selectedItems)
+                    foreach (var item in alvos)
                     {
                         if (MarcarComoDesinstalado(item.GameId)) marcados++;
                     }
                     PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) marcado(s) como desinstalado(s).", marcados), "Sucesso");
+                    window.Close();
+                },
+                onRelocate: (selectedItems) =>
+                {
+                    var alvos = selectedItems.Where(i => i.TemNovaCasa).ToList();
+                    if (alvos.Count == 0)
+                    {
+                        PlayniteApi.Dialogs.ShowMessage(
+                            "Selecione os jogos com status \"Mudou de pasta\" para reapontar.",
+                            "Aviso");
+                        return;
+                    }
+
+                    int ok = 0;
+                    using (PlayniteApi.Database.BufferedUpdate())
+                    {
+                        foreach (var item in alvos)
+                        {
+                            if (RelocarJogo(item.GameId, item.NovaPasta, item.NovoExe)) ok++;
+                        }
+                    }
+                    PlayniteApi.Dialogs.ShowMessage(
+                        string.Format("{0} jogo(s) reapontados para a pasta onde estão hoje.", ok), "Sucesso");
                     window.Close();
                 },
                 onClose: () => window.Close());

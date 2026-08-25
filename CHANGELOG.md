@@ -6,6 +6,29 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.9.0] - 2026-08-24
+
+### Corrigido
+- **Jogo que muda de pasta não é mais tratado como jogo que sumiu.** Até agora a extensão comparava a biblioteca com o disco só pelo caminho exato. Bastava mover ou renomear a pasta de um jogo para ele virar dois problemas ao mesmo tempo: a pasta nova aparecia como "jogo novo para importar" e o registro antigo aparecia como ausente, já marcado para ser desinstalado. Importar criava o jogo duplicado; desinstalar tirava da biblioteca um jogo que estava no disco, funcionando. Agora a busca reconhece que é a mesma instalação e oferece reapontar, mantendo o registro com o tempo de jogo, as capas e as tags.
+- **A busca por jogos perdidos parou de descartar o acerto em silêncio.** Ela encontrava o executável e, se o nome da pasta nova não fosse igual ao nome do jogo nem ao da pasta antiga, jogava o resultado fora e continuava procurando — justamente o caso de quem move e renomeia a pasta. O jogo voltava como "Não Encontrado" mesmo estando no disco.
+- **Nada que a extensão encontrou nasce marcado para desinstalar.** Antes, o item "Não Encontrado" já vinha selecionado, então um erro da busca virava desinstalação com um clique. Agora só a evidência forte vem marcada, e jogo com pasta encontrada não entra na ação de desinstalar nem se você marcar à mão.
+- **Jogo sem ação de arquivo passou a ser procurado.** A busca exigia que o jogo tivesse um executável configurado; quem só tinha a pasta de instalação nunca era procurado, e ficava para sempre na lista de ausentes.
+- A verificação de integridade também procura onde o jogo está hoje. Ela só sabia oferecer duas saídas, as duas destrutivas (remover da biblioteca ou marcar como desinstalado), e agora tem "Reapontar" para o que apenas mudou de lugar.
+
+### Adicionado
+- **Coluna "Por quê"**: cada jogo encontrado mostra em que a extensão se baseou para dizer que é ele — mesmo executável, arquivo do mesmo tamanho, mesma estrutura interna de pastas, nome equivalente ignorando versão e grupo de release, ou o executável existir numa única pasta de todo o disco monitorado. A situação é "Mudou de pasta" quando a evidência é forte, e "Provável (confira)" quando pede sua conferência. Duas pastas igualmente plausíveis derrubam a confiança de propósito: reapontar para a pasta errada é perder o vínculo do jogo certo sem perceber.
+- **Aba "Início"**, com o retrato da sua biblioteca local: quantos jogos estão nela, quantas pastas do disco ficaram de fora, quantos jogos estão com a pasta ausente e quantas pastas você monitora — mais uma frase dizendo o que fazer a seguir. Antes era preciso abrir cinco abas e apertar o botão de busca de cada uma para saber se havia algo errado.
+- Aviso quando uma pasta monitorada está inacessível (HD externo desligado, unidade de rede fora, letra de disco trocada). É a causa mais comum de "sumiu tudo", e agora ela aparece antes de qualquer botão que marque jogo como desinstalado.
+
+### Alterado
+- **A tela de configurações foi repaginada inteira**, no mesmo padrão visual da extensão Playnite Hub: superfícies escuras, cartões, tipografia própria e o dourado marcando a aba selecionada. Antes eram nove abas com as cores fixas espalhadas por 726 linhas de um arquivo só.
+- O que abre por cima da tela também seguiu o tema: a lista do seletor de pasta (que aparecia branca, com o item destacado em amarelo do Windows), as dicas de texto, as barras de rolagem e a setinha dos grupos das tabelas.
+- As abas foram reorganizadas: as opções de nome, versão, metadados e busca automática saíram de dentro de "Pastas Monitoradas" e ganharam a aba **Ajustes** — é ali que elas cresciam até empurrar a tabela de pastas para fora da tela. As quatro abas que eram só registro (importações, ignorados, desinstalados e duplicados removidos) viraram uma aba **Histórico** com abas laterais.
+- "Reparar Desinstalados" virou **"Jogos que sumiram"**, e a ação em destaque passou a ser reapontar, não desinstalar.
+- A busca de jogos perdidos ficou mais rápida: ela varria a árvore de pastas inteira uma vez para cada jogo ausente, e agora lê o disco uma vez só para todos.
+
+---
+
 ## [0.8.0] - 2026-08-05
 
 ### Adicionado

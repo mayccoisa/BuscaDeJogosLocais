@@ -3,104 +3,69 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:local="clr-namespace:BuscaDeJogosLocais"
              mc:Ignorable="d"
              d:DesignHeight="550" d:DesignWidth="950">
 
     <UserControl.Resources>
-        <!-- Cabecalho/celulas seguindo o tema do Playnite (o padrao do WPF fica ilegivel no escuro). -->
-        <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#26FFFFFF" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="BorderBrush" Value="#33FFFFFF" />
-            <Setter Property="BorderThickness" Value="0,0,1,1" />
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
-        </Style>
-        <Style TargetType="DataGridRow">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        </Style>
-        <Style TargetType="DataGridCell">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="4,3" />
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#33FFFFFF" />
-                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>    </UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/BuscaDeJogosLocais;component/Ui/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
 
-    <Grid Margin="15">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+    <Border Background="{StaticResource PageBackgroundBrush}">
+        <Grid Margin="20,18,20,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" MinHeight="180" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <TextBlock Text="{Binding HeaderText}" FontSize="14" FontWeight="Bold" Foreground="Gold" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding ResumoText}" FontStyle="Italic" Opacity="0.7" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
-        </StackPanel>
+            <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                <StackPanel Orientation="Horizontal">
+                    <Border Style="{StaticResource TitleBar}" />
+                    <TextBlock Style="{StaticResource PageTitle}" Text="{Binding HeaderText}" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource PageDescription}" Margin="18,8,0,0" Text="{Binding ResumoText}" />
+            </StackPanel>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
-            <CheckBox Content="Mostrar só o que ficou de fora" IsChecked="{Binding SomenteForaDaBiblioteca}"
-                      VerticalContentAlignment="Center" />
-        </StackPanel>
+            <CheckBox Grid.Row="1" Margin="0,0,0,10"
+                      Content="Mostrar só o que ficou de fora" IsChecked="{Binding SomenteForaDaBiblioteca}" />
 
-        <DataGrid Grid.Row="2"
-                  ItemsSource="{Binding ItensView}"
-                  AutoGenerateColumns="False"
-                  CanUserAddRows="False"
-                  IsReadOnly="True"
-                  Background="#22FFFFFF"
-                  RowBackground="Transparent"
-                  AlternatingRowBackground="#11FFFFFF"
-                  GridLinesVisibility="Horizontal"
-                  HorizontalGridLinesBrush="#22FFFFFF"
-                  HeadersVisibility="Column">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Jogo" Binding="{Binding Nome}" Width="*" />
-                <DataGridTextColumn Header="Versão" Binding="{Binding Versao}" Width="110" />
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="140">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Status}" Value="Na biblioteca">
-                                    <Setter Property="Foreground" Value="LightGreen" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="Não importado">
-                                    <Setter Property="Foreground" Value="Gold" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="Pasta ausente">
-                                    <Setter Property="Foreground" Value="#FF8080" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding Status}" Value="Ignorado">
-                                    <Setter Property="Foreground" Value="#888888" />
-                                    <Setter Property="FontStyle" Value="Italic" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
-                <DataGridTextColumn Header="Pasta" Binding="{Binding NomePasta}" Width="260">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Opacity" Value="0.6" />
-                            <Setter Property="ToolTip" Value="{Binding Caminho}" />
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
-            </DataGrid.Columns>
-        </DataGrid>
+            <DataGrid Grid.Row="2" Style="{StaticResource ThemedDataGrid}"
+                      ItemsSource="{Binding ItensView}" IsReadOnly="True"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Jogo" Binding="{Binding Nome}" Width="*" />
+                    <DataGridTextColumn Header="Versão" Binding="{Binding Versao}" Width="110" />
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Content="Fechar" Click="OnFecharClick" Padding="15,7" Cursor="Hand" />
-        </StackPanel>
-    </Grid>
+                    <DataGridTemplateColumn Header="Situação" Width="150" SortMemberPath="Status">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource StatusPill}">
+                                    <TextBlock Text="{Binding Status}" FontSize="11.5" FontWeight="SemiBold"
+                                               Foreground="{Binding Status, Converter={StaticResource StatusBrush}}" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Pasta" Width="280" SortMemberPath="NomePasta">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Style="{StaticResource PathText}" Text="{Binding NomePasta}" ToolTip="{Binding Caminho}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Grid.Row="3" Style="{StaticResource ActionBar}" Margin="-20,14,-20,0">
+                <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Right" Margin="0"
+                        Content="Fechar" Click="OnFecharClick" />
+            </Border>
+        </Grid>
+    </Border>
 </UserControl>

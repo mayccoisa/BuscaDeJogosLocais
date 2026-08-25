@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace BuscaDeJogosLocais
@@ -411,6 +413,243 @@ namespace BuscaDeJogosLocais
             }
 
             return false;
+        }
+
+        // ---------------------------------------------------------------------
+        // Relocalização: reconhecer que uma pasta que "sumiu" apenas mudou de lugar
+        // ---------------------------------------------------------------------
+        //
+        // Por que isto existe: até a versão 0.8.0 a extensão casava biblioteca × disco
+        // SÓ por caminho exato. Pasta movida ou renomeada virava duas coisas erradas ao
+        // mesmo tempo — um "jogo novo" para importar e um registro "ausente" oferecido
+        // pré-marcado para desinstalar. E a busca do reparo, quando achava o executável
+        // numa pasta cujo nome não batia com o nome do jogo nem com o da pasta antiga,
+        // DESCARTAVA o acerto em silêncio. O resultado observado em biblioteca real: o
+        // jogo estava no disco, foi encontrado, e mesmo assim voltou como "Não Encontrado".
+        //
+        // A regra nova é somar evidência em vez de exigir uma coincidência única, e
+        // devolver junto o porquê do casamento — para a tela poder mostrar em que a
+        // extensão se baseou, em vez de pedir fé.
+
+        // Nome de executável que não identifica jogo nenhum: casar só por ele apontaria
+        // qualquer pasta do disco. Vale como sinal fraco, nunca como prova.
+        public static readonly string[] GenericExeNames =
+        {
+            "game", "start", "launcher", "launch", "play", "run", "main", "app",
+            "client", "startup", "bin", "win64", "win32", "shipping"
+        };
+
+        public const int RelocationScoreAlta = 55;
+        public const int RelocationScoreMinima = 35;
+
+        public class RelocationMatch
+        {
+            public string PastaCandidata { get; set; }
+            public string ExeCandidato { get; set; }
+            public int Pontos { get; set; }
+            public string Motivo { get; set; }
+            public string Confianca { get; set; }   // "Alta" | "Média"
+            // True só quando a evidência é forte o bastante para a linha já nascer marcada.
+            public bool Confiavel { get { return Pontos >= RelocationScoreAlta; } }
+        }
+
+        public static bool IsGenericExeName(string exePath)
+        {
+            if (string.IsNullOrEmpty(exePath)) return true;
+            string nome = Path.GetFileNameWithoutExtension(exePath);
+            if (string.IsNullOrEmpty(nome)) return true;
+            nome = nome.ToLowerInvariant();
+            foreach (string g in GenericExeNames)
+            {
+                if (nome == g) return true;
+            }
+            return false;
+        }
+
+        // Reduz um nome de pasta/jogo à sua forma comparável: tira versão e grupo de
+        // release (CleanGameName), acentos, pontuação e espaço repetido.
+        // "Elden.Ring.v1.12-FitGirl Repack" e "Elden Ring" caem no mesmo texto.
+        public static string SlugForMatch(string nome)
+        {
+            if (string.IsNullOrEmpty(nome)) return string.Empty;
+
+            string limpo = CleanGameNameOnly(nome);
+            if (string.IsNullOrEmpty(limpo)) limpo = nome;
+
+            string semAcento = limpo.Normalize(NormalizationForm.FormD);
+            var sb = new StringBuilder();
+            foreach (char c in semAcento)
+            {
+                if (CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.NonSpacingMark) continue;
+                if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+                else if (char.IsWhiteSpace(c)) sb.Append(' ');
+                // pontuação some: "S.T.A.L.K.E.R." e "STALKER" viram o mesmo texto.
+            }
+
+            string saida = sb.ToString();
+            while (saida.Contains("  ")) saida = saida.Replace("  ", " ");
+            return saida.Trim();
+        }
+
+        private static string NomeDaPasta(string caminho)
+        {
+            if (string.IsNullOrEmpty(caminho)) return string.Empty;
+            try { return new DirectoryInfo(caminho).Name; }
+            catch (Exception) { return string.Empty; }
+        }
+
+        // Caminho do executável relativo à pasta do jogo ("bin\x64\jogo.exe"), em minúsculo.
+        // Estrutura interna igual é sinal de que é a MESMA instalação, não outra cópia.
+        private static string CaminhoRelativoDoExe(string pastaRaiz, string exePath)
+        {
+            if (string.IsNullOrEmpty(pastaRaiz) || string.IsNullOrEmpty(exePath)) return string.Empty;
+            string raiz = NormalizePath(pastaRaiz);
+            string exe = NormalizePath(exePath);
+            string prefixo = raiz + Path.DirectorySeparatorChar.ToString();
+            if (!exe.StartsWith(prefixo, StringComparison.OrdinalIgnoreCase)) return string.Empty;
+            return exe.Substring(prefixo.Length);
+        }
+
+        /// <summary>
+        /// Pontua a hipótese "esta pasta candidata é o jogo que sumiu daquela pasta antiga".
+        /// Devolve null quando a evidência não chega ao mínimo — melhor não sugerir nada do
+        /// que apontar o jogo errado. Nunca decide sozinha: quem chama mostra o Motivo.
+        /// Tamanho de arquivo desconhecido entra como 0 e simplesmente não pontua.
+        /// </summary>
+        public static RelocationMatch AvaliarRelocalizacao(
+            string nomeDoJogo,
+            string pastaAntiga, string exeAntigo, long tamanhoExeAntigo,
+            string pastaCandidata, string exeCandidato, long tamanhoExeCandidato)
+        {
+            if (string.IsNullOrEmpty(pastaCandidata)) return null;
+
+            int pontos = 0;
+            var motivos = new List<string>();
+
+            // --- 1. Executável ---
+            string nomeExeAntigo = string.IsNullOrEmpty(exeAntigo) ? string.Empty : Path.GetFileName(exeAntigo);
+            string nomeExeCandidato = string.IsNullOrEmpty(exeCandidato) ? string.Empty : Path.GetFileName(exeCandidato);
+            bool exeIgual = nomeExeAntigo.Length > 0 &&
+                            nomeExeAntigo.Equals(nomeExeCandidato, StringComparison.OrdinalIgnoreCase);
+            bool exeGenerico = IsGenericExeName(nomeExeAntigo);
+
+            if (exeIgual)
+            {
+                if (exeGenerico)
+                {
+                    pontos += 15;
+                    motivos.Add("mesmo executável, mas de nome genérico");
+                }
+                else
+                {
+                    pontos += 35;
+                    motivos.Add("mesmo executável (" + nomeExeCandidato + ")");
+                }
+            }
+
+            // --- 2. Tamanho do executável: é o sinal que distingue a MESMA cópia ---
+            if (exeIgual && tamanhoExeAntigo > 0 && tamanhoExeAntigo == tamanhoExeCandidato)
+            {
+                pontos += 30;
+                motivos.Add("arquivo do mesmo tamanho");
+            }
+
+            // --- 3. Estrutura interna ("bin\x64\jogo.exe" nos dois lados) ---
+            string relAntigo = CaminhoRelativoDoExe(pastaAntiga, exeAntigo);
+            string relCandidato = CaminhoRelativoDoExe(pastaCandidata, exeCandidato);
+            if (relAntigo.Length > 0 && relAntigo.Equals(relCandidato, StringComparison.OrdinalIgnoreCase) &&
+                relAntigo.IndexOf(Path.DirectorySeparatorChar) >= 0)
+            {
+                pontos += 10;
+                motivos.Add("mesma estrutura interna de pastas");
+            }
+
+            // --- 4. Nome: vale o sinal MAIS FORTE, não a soma dos três ---
+            string nomePastaAntiga = NomeDaPasta(pastaAntiga);
+            string nomePastaCandidata = NomeDaPasta(pastaCandidata);
+            string slugAntigo = SlugForMatch(nomePastaAntiga);
+            string slugCandidato = SlugForMatch(nomePastaCandidata);
+            string slugJogo = SlugForMatch(nomeDoJogo);
+
+            int pontosNome = 0;
+            string motivoNome = null;
+
+            if (nomePastaCandidata.Length > 0 &&
+                nomePastaCandidata.Equals(nomePastaAntiga, StringComparison.OrdinalIgnoreCase))
+            {
+                pontosNome = 25; motivoNome = "pasta com o mesmo nome de antes";
+            }
+            else if (slugCandidato.Length > 0 && slugCandidato == slugAntigo)
+            {
+                pontosNome = 20; motivoNome = "mesmo nome de pasta ignorando versão e grupo";
+            }
+            else if (slugCandidato.Length > 0 && slugCandidato == slugJogo)
+            {
+                pontosNome = 18; motivoNome = "pasta com o nome do jogo";
+            }
+            else if (slugJogo.Length >= 4 && slugCandidato.Length >= 4 &&
+                     (slugCandidato.Contains(slugJogo) || slugJogo.Contains(slugCandidato)))
+            {
+                pontosNome = 10; motivoNome = "nome da pasta parecido com o do jogo";
+            }
+
+            if (pontosNome > 0)
+            {
+                pontos += pontosNome;
+                motivos.Add(motivoNome);
+            }
+
+            if (pontos < RelocationScoreMinima) return null;
+
+            var m = new RelocationMatch();
+            m.PastaCandidata = pastaCandidata;
+            m.ExeCandidato = exeCandidato;
+            m.Pontos = pontos;
+            m.Motivo = string.Join(" · ", motivos.ToArray());
+            m.Confianca = pontos >= RelocationScoreAlta ? "Alta" : "Média";
+            return m;
+        }
+
+        /// <summary>
+        /// Reforça o candidato quando o executável do jogo perdido só existe em UMA pasta de
+        /// todo o disco monitorado. Este é o sinal que salva o caso mais comum de pasta movida:
+        /// o tamanho do arquivo antigo não pode ser comparado (ele sumiu junto com a pasta), e
+        /// sem isto um jogo movido E renomeado ficaria eternamente em "Média", pedindo
+        /// confirmação para algo que só tem uma resposta possível.
+        /// Não vale para executável de nome genérico: "game.exe" único é coincidência, não prova.
+        /// </summary>
+        public static RelocationMatch ReforcarPorExclusividade(RelocationMatch match, string exeAntigo, int quantasPastasTemEsseExe)
+        {
+            if (match == null) return null;
+            if (quantasPastasTemEsseExe != 1) return match;
+            if (IsGenericExeName(exeAntigo)) return match;
+
+            match.Pontos += 20;
+            match.Motivo = match.Motivo + " · esse executável só existe nessa pasta em todo o disco monitorado";
+            match.Confianca = match.Pontos >= RelocationScoreAlta ? "Alta" : "Média";
+            return match;
+        }
+
+        /// <summary>
+        /// Escolhe o melhor candidato de uma lista. Empate técnico (diferença menor que 10
+        /// pontos entre os dois primeiros) REBAIXA a confiança para "Média": duas pastas
+        /// igualmente plausíveis é exatamente o caso em que reapontar sozinho erraria.
+        /// </summary>
+        public static RelocationMatch MelhorCandidato(List<RelocationMatch> candidatos)
+        {
+            if (candidatos == null) return null;
+
+            var ordenados = candidatos.Where(c => c != null).OrderByDescending(c => c.Pontos).ToList();
+            if (ordenados.Count == 0) return null;
+
+            RelocationMatch melhor = ordenados[0];
+            if (ordenados.Count > 1 && (melhor.Pontos - ordenados[1].Pontos) < 10)
+            {
+                melhor.Confianca = "Média";
+                melhor.Motivo = melhor.Motivo + " · outra pasta parecida também serve, confira antes";
+                if (melhor.Pontos >= RelocationScoreAlta) melhor.Pontos = RelocationScoreAlta - 1;
+            }
+            return melhor;
         }
     }
 }

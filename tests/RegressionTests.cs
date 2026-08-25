@@ -209,6 +209,135 @@ class RegressionTests
         Eq("espaco em volta e aparado", "Sony PSP",
             LocalGameUtils.EscolherNomeDeConsole(new List<string> { "  Sony PSP  " }, null));
 
+
+        // ---- SlugForMatch ----
+        Console.WriteLine("[SlugForMatch]");
+        Eq("versao e grupo somem", "elden ring", LocalGameUtils.SlugForMatch("Elden.Ring.v1.12-FitGirl"));
+        Eq("pontuacao de sigla some", "stalker", LocalGameUtils.SlugForMatch("S.T.A.L.K.E.R."));
+        Eq("acento some", "pokemon x", LocalGameUtils.SlugForMatch("Pokémon X"));
+        Eq("vazio para null", "", LocalGameUtils.SlugForMatch(null));
+
+        // ---- IsGenericExeName ----
+        Console.WriteLine("[IsGenericExeName]");
+        Check("game.exe e generico", LocalGameUtils.IsGenericExeName(@"D:\Jogos\Foo\game.exe"));
+        Check("start.exe e generico", LocalGameUtils.IsGenericExeName("start.exe"));
+        Check("EldenRing.exe NAO e generico", !LocalGameUtils.IsGenericExeName(@"D:\Jogos\Foo\EldenRing.exe"));
+
+        // ---- AvaliarRelocalizacao ----
+        Console.WriteLine("[AvaliarRelocalizacao]");
+
+        // O caso que motivou tudo: a pasta mudou de lugar E de nome, mas os arquivos sao os mesmos.
+        // Antes disso a extensao descartava esse acerto e devolvia "Nao Encontrado" pre-marcado
+        // para desinstalar.
+        var movidoERenomeado = LocalGameUtils.AvaliarRelocalizacao(
+            "Elden Ring",
+            @"D:\Jogos\Elden.Ring.v1.02-CODEX", @"D:\Jogos\Elden.Ring.v1.02-CODEX\eldenring.exe", 51200,
+            @"E:\Games\ER Definitivo", @"E:\Games\ER Definitivo\eldenring.exe", 51200);
+        Check("pasta movida e renomeada e reconhecida", movidoERenomeado != null);
+        Check("pasta movida e renomeada tem confianca Alta",
+            movidoERenomeado != null && movidoERenomeado.Confiavel);
+        Check("o motivo cita o executavel",
+            movidoERenomeado != null && movidoERenomeado.Motivo.Contains("eldenring.exe"));
+        Check("o motivo cita o tamanho",
+            movidoERenomeado != null && movidoERenomeado.Motivo.Contains("mesmo tamanho"));
+
+        // Mesmo nome de pasta noutro disco: nao precisa de tamanho para ser confiavel.
+        var soMovido = LocalGameUtils.AvaliarRelocalizacao(
+            "Hades",
+            @"D:\Jogos\Hades", @"D:\Jogos\Hades\Hades.exe", 0,
+            @"E:\Jogos\Hades", @"E:\Jogos\Hades\Hades.exe", 0);
+        Check("pasta so movida e confiavel", soMovido != null && soMovido.Confiavel);
+
+        // Versao/grupo diferentes no nome da pasta continuam sendo o mesmo jogo.
+        var repackTrocado = LocalGameUtils.AvaliarRelocalizacao(
+            "Stardust Wish of Witch",
+            @"D:\Jogos\STARDUST.Wish.of.Witch.v20260729-P2P", @"D:\Jogos\STARDUST.Wish.of.Witch.v20260729-P2P\stardust.exe", 0,
+            @"D:\Jogos\STARDUST.Wish.of.Witch.v20260801-TENOKE", @"D:\Jogos\STARDUST.Wish.of.Witch.v20260801-TENOKE\stardust.exe", 0);
+        Check("mesma pasta com versao nova continua sendo o jogo",
+            repackTrocado != null && repackTrocado.Confiavel);
+
+        // Executavel de nome generico, sozinho, NAO aponta jogo nenhum.
+        var soGenerico = LocalGameUtils.AvaliarRelocalizacao(
+            "Jogo Um",
+            @"D:\Jogos\Jogo Um", @"D:\Jogos\Jogo Um\game.exe", 0,
+            @"D:\Jogos\Outra Coisa Totalmente Diferente", @"D:\Jogos\Outra Coisa Totalmente Diferente\game.exe", 0);
+        Check("game.exe sozinho nao vira candidato", soGenerico == null);
+
+        // ...mas com o nome batendo, vale como Media (mostra, nao decide sozinho).
+        var genericoComNome = LocalGameUtils.AvaliarRelocalizacao(
+            "Jogo Um",
+            @"D:\Jogos\Jogo Um", @"D:\Jogos\Jogo Um\game.exe", 0,
+            @"E:\Jogos\Jogo Um", @"E:\Jogos\Jogo Um\game.exe", 0);
+        Check("game.exe com pasta de mesmo nome vira candidato", genericoComNome != null);
+        Check("...mas so com confianca Media",
+            genericoComNome != null && !genericoComNome.Confiavel);
+
+        // Nada em comum: nao inventa candidato.
+        var nadaAVer = LocalGameUtils.AvaliarRelocalizacao(
+            "Hollow Knight",
+            @"D:\Jogos\Hollow Knight", @"D:\Jogos\Hollow Knight\hollow_knight.exe", 1024,
+            @"E:\Jogos\Celeste", @"E:\Jogos\Celeste\Celeste.exe", 4096);
+        Check("pasta sem relacao nao vira candidato", nadaAVer == null);
+
+        // Tamanho diferente derruba a confianca, mas o candidato continua visivel.
+        var mesmoExeOutroTamanho = LocalGameUtils.AvaliarRelocalizacao(
+            "Foo Bar",
+            @"D:\Jogos\Foo Bar", @"D:\Jogos\Foo Bar\foobar.exe", 1000,
+            @"E:\Jogos\Baz Qux", @"E:\Jogos\Baz Qux\foobar.exe", 9999);
+        Check("mesmo exe com tamanho diferente ainda aparece", mesmoExeOutroTamanho != null);
+        Check("...com confianca Media, nao Alta",
+            mesmoExeOutroTamanho != null && !mesmoExeOutroTamanho.Confiavel);
+
+        // ---- ReforcarPorExclusividade ----
+        // O caso REAL de pasta movida: o exe antigo sumiu junto com a pasta, entao o tamanho
+        // nao pode ser comparado. Sobra o nome do executavel -- que, sendo unico no disco
+        // monitorado, e resposta unica e nao palpite.
+        Console.WriteLine("[ReforcarPorExclusividade]");
+        var semTamanho = LocalGameUtils.AvaliarRelocalizacao(
+            "Elden Ring",
+            @"D:\Jogos\Elden.Ring.v1.02-CODEX", @"D:\Jogos\Elden.Ring.v1.02-CODEX\eldenring.exe", 0,
+            @"E:\Games\ER Definitivo", @"E:\Games\ER Definitivo\eldenring.exe", 0);
+        Check("movido+renomeado sem tamanho aparece como Media", semTamanho != null && !semTamanho.Confiavel);
+        var reforcado = LocalGameUtils.ReforcarPorExclusividade(
+            semTamanho, @"D:\Jogos\Elden.Ring.v1.02-CODEX\eldenring.exe", 1);
+        Check("exe unico no disco eleva para Alta", reforcado != null && reforcado.Confiavel);
+        Check("o motivo explica a exclusividade",
+            reforcado != null && reforcado.Motivo.Contains("s\u00f3 existe nessa pasta"));
+
+        var duasPastas = LocalGameUtils.ReforcarPorExclusividade(
+            LocalGameUtils.AvaliarRelocalizacao("Elden Ring",
+                @"D:\A\Elden Ring", @"D:\A\Elden Ring\eldenring.exe", 0,
+                @"E:\B\Outro Nome", @"E:\B\Outro Nome\eldenring.exe", 0),
+            @"D:\A\Elden Ring\eldenring.exe", 2);
+        Check("exe em duas pastas nao ganha reforco", duasPastas != null && !duasPastas.Confiavel);
+
+        var genericoUnico = LocalGameUtils.ReforcarPorExclusividade(
+            LocalGameUtils.AvaliarRelocalizacao("Jogo Um",
+                @"D:\Jogos\Jogo Um", @"D:\Jogos\Jogo Um\game.exe", 0,
+                @"E:\Jogos\Jogo Um", @"E:\Jogos\Jogo Um\game.exe", 0),
+            @"D:\Jogos\Jogo Um\game.exe", 1);
+        Check("game.exe unico nao vira prova", genericoUnico != null && !genericoUnico.Confiavel);
+        Check("reforco em null continua null",
+            LocalGameUtils.ReforcarPorExclusividade(null, "x.exe", 1) == null);
+
+        // ---- MelhorCandidato ----
+        Console.WriteLine("[MelhorCandidato]");
+        Check("lista vazia devolve null", LocalGameUtils.MelhorCandidato(new List<LocalGameUtils.RelocationMatch>()) == null);
+        Check("lista null devolve null", LocalGameUtils.MelhorCandidato(null) == null);
+
+        var a = new LocalGameUtils.RelocationMatch { PastaCandidata = @"E:\A", Pontos = 90, Motivo = "x", Confianca = "Alta" };
+        var b = new LocalGameUtils.RelocationMatch { PastaCandidata = @"E:\B", Pontos = 40, Motivo = "y", Confianca = "Média" };
+        var vencedorFolgado = LocalGameUtils.MelhorCandidato(new List<LocalGameUtils.RelocationMatch> { b, a });
+        Check("o de mais pontos vence", vencedorFolgado != null && vencedorFolgado.PastaCandidata == @"E:\A");
+        Check("vencedor folgado mantem a confianca", vencedorFolgado != null && vencedorFolgado.Confiavel);
+
+        // Empate tecnico: duas pastas igualmente plausiveis nao podem ser reapontadas sozinhas.
+        var c1 = new LocalGameUtils.RelocationMatch { PastaCandidata = @"E:\A", Pontos = 70, Motivo = "x", Confianca = "Alta" };
+        var c2 = new LocalGameUtils.RelocationMatch { PastaCandidata = @"E:\B", Pontos = 65, Motivo = "y", Confianca = "Alta" };
+        var empate = LocalGameUtils.MelhorCandidato(new List<LocalGameUtils.RelocationMatch> { c1, c2 });
+        Check("empate tecnico derruba para Media", empate != null && !empate.Confiavel);
+        Check("empate tecnico avisa no motivo", empate != null && empate.Motivo.Contains("confira antes"));
+
         Console.WriteLine();
         Console.WriteLine(string.Format("Resultado: {0}/{1} passaram, {2} falha(s).", total - failures, total, failures));
         return failures == 0 ? 0 : 1;

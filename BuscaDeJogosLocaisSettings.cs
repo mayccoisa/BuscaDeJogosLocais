@@ -149,7 +149,32 @@ namespace BuscaDeJogosLocais
         private bool jaExiste;
         public bool JaExiste { get { return jaExiste; } set { SetValue(ref jaExiste, value); OnPropertyChanged("Status"); } }
 
-        public string Status { get { return JaExiste ? "Já na Biblioteca" : "Pendente"; } }
+        // ---- Pasta que mudou de lugar ----
+        // Sem isto, uma pasta movida ou renomeada aparecia como "Pendente" (jogo novo para
+        // importar) enquanto o registro antigo virava "pasta ausente" — dois problemas no lugar
+        // de um, e o jogo duplicado na biblioteca se a pessoa importasse.
+        private Guid movidoDeGameId;
+        public Guid MovidoDeGameId { get { return movidoDeGameId; } set { SetValue(ref movidoDeGameId, value); OnPropertyChanged("Status"); OnPropertyChanged("EhMudancaDePasta"); } }
+
+        public string MovidoDePasta { get; set; }
+        public string MovidoDeNome { get; set; }
+
+        private string motivoMudanca;
+        public string MotivoMudanca { get { return motivoMudanca; } set { SetValue(ref motivoMudanca, value); } }
+
+        private string confiancaMudanca;
+        public string ConfiancaMudanca { get { return confiancaMudanca; } set { SetValue(ref confiancaMudanca, value); } }
+
+        public bool EhMudancaDePasta { get { return MovidoDeGameId != Guid.Empty; } }
+
+        public string Status
+        {
+            get
+            {
+                if (EhMudancaDePasta) return "Mudou de pasta";
+                return JaExiste ? "Já na Biblioteca" : "Pendente";
+            }
+        }
     }
 
     // Um jogo (ou candidato a jogo) visto de dentro de uma pasta monitorada.
@@ -237,14 +262,51 @@ namespace BuscaDeJogosLocais
         private bool selected;
         public bool Selected { get { return selected; } set { SetValue(ref selected, value); } }
 
+        // Pasta onde a extensão encontrou este jogo agora. Vazio = não achou em lugar nenhum.
+        // A tela de integridade só oferecia remover ou desinstalar; sem esta busca, o jogo que
+        // simplesmente mudou de pasta era tratado como jogo que sumiu.
+        public string NovaPasta { get; set; }
+        public string NovoExe { get; set; }
+        public string Motivo { get; set; }
+        public string Confianca { get; set; }
+
+        public bool TemNovaCasa { get { return !string.IsNullOrEmpty(NovaPasta); } }
+
         public string StatusSummary {
             get {
+                if (TemNovaCasa) return "Mudou de pasta";
                 var s = new List<string>();
                 if (FolderMissing) s.Add("Pasta Ausente");
                 if (ExeMissing) s.Add("Executável Ausente");
                 return string.Join(" | ", s);
             }
         }
+
+        // O que a tela mostra na coluna de detalhe: para onde foi, ou por que não foi achado.
+        public string Detalhe
+        {
+            get
+            {
+                if (TemNovaCasa) return NovaPasta + "  (" + Motivo + ")";
+                return InstallDir;
+            }
+        }
+    }
+
+    // Um executável encontrado no disco, com o tamanho — que é o sinal capaz de distinguir
+    // a MESMA cópia de um jogo homônimo.
+    public class ExeEmDisco
+    {
+        public string Caminho { get; set; }
+        public long Tamanho { get; set; }
+    }
+
+    // Uma pasta de jogo encontrada no disco durante a indexação das pastas monitoradas.
+    public class PastaEmDisco
+    {
+        public string Pasta { get; set; }
+        public string PastaMonitoradaPai { get; set; }
+        public List<ExeEmDisco> Exes { get; set; }
     }
 
     public class RelinkGameItem : ObservableObject
@@ -252,14 +314,26 @@ namespace BuscaDeJogosLocais
         public Guid GameId { get; set; }
         public string Nome { get; set; }
         public string CaminhoAntigoExe { get; set; }
+        public string PastaAntiga { get; set; }
         public string NovoCaminhoExe { get; set; }
         public string NovoInstallDirectory { get; set; }
-        
+
+        // Por que a extensão acha que é este jogo. Sem isto a tela pede fé: a pessoa vê um
+        // caminho novo e não tem como saber se o casamento foi por prova ou por palpite.
+        private string motivo;
+        public string Motivo { get { return motivo; } set { SetValue(ref motivo, value); } }
+
+        // "Alta" | "Média" | vazio quando não há candidato.
+        private string confianca;
+        public string Confianca { get { return confianca; } set { SetValue(ref confianca, value); } }
+
         private string status;
         public string Status { get { return status; } set { SetValue(ref status, value); } }
-        
+
         private bool selecionado;
         public bool Selecionado { get { return selecionado; } set { SetValue(ref selecionado, value); } }
+
+        public bool TemCandidato { get { return !string.IsNullOrEmpty(NovoCaminhoExe); } }
     }
 
     // Uma instalação individual pertencente a um grupo de jogos duplicados.
@@ -436,6 +510,7 @@ namespace BuscaDeJogosLocais
         public RelayCommand<object> AddFolderCommand { get; private set; }
         public RelayCommand<object> ScanNowCommand { get; private set; }
         public RelayCommand<object> ImportSelectedCommand { get; private set; }
+        public RelayCommand<object> ReapontarMovidosCommand { get; private set; }
         public RelayCommand<object> ClearHistoryCommand { get; private set; }
         public RelayCommand<object> UpdateExistingGamesDriveCommand { get; private set; }
         
@@ -771,11 +846,60 @@ namespace BuscaDeJogosLocais
                 string folderToScan = FiltroPastaSelecionada != "Todas as Pastas" ? FiltroPastaSelecionada : null;
                 plugin.ExecuteManualScan(JogosEncontrados, folderToScan);
                 RecalcularEstatisticas();
+                AtualizarContagemDeMovidos();
+            });
+
+            // Reaponta os jogos que o scan reconheceu como "mudou de pasta". Sem este botão a
+            // única saída para uma pasta movida era importar de novo (duplicando o jogo) ou
+            // marcar como desinstalado (perdendo o jogo que está ali, no disco, funcionando).
+            ReapontarMovidosCommand = new RelayCommand<object>((_) =>
+            {
+                var movidos = JogosEncontrados.Where(j => j.EhMudancaDePasta).ToList();
+                if (movidos.Count == 0)
+                {
+                    plugin.PlayniteApi.Dialogs.ShowMessage(
+                        "Nenhum jogo mudou de pasta nesta busca.",
+                        "Reapontar");
+                    return;
+                }
+
+                var linhas = movidos.Take(12).Select(m => string.Format("• {0}\n    de: {1}\n    para: {2}\n    ({3})", m.MovidoDeNome, m.MovidoDePasta, m.PastaRaiz, m.MotivoMudanca));
+                string resumo = string.Join("\n\n", linhas.ToArray());
+                if (movidos.Count > 12) resumo = resumo + string.Format("\n\n...e mais {0}.", movidos.Count - 12);
+
+                if (plugin.PlayniteApi.Dialogs.ShowMessage(
+                        string.Format("Reapontar {0} jogo(s) para a pasta onde estão hoje?\n\n{1}\n\nO registro do jogo é o mesmo: tempo de jogo, capa e tags ficam como estão.", movidos.Count, resumo),
+                        "Reapontar jogos que mudaram de pasta",
+                        System.Windows.MessageBoxButton.YesNo) != System.Windows.MessageBoxResult.Yes)
+                {
+                    return;
+                }
+
+                int ok = 0;
+                using (plugin.PlayniteApi.Database.BufferedUpdate())
+                {
+                    foreach (var m in movidos)
+                    {
+                        if (!plugin.RelocarJogo(m.MovidoDeGameId, m.PastaRaiz, m.CaminhoExe)) continue;
+                        m.MovidoDeGameId = Guid.Empty;
+                        m.JaExiste = true;
+                        m.Selecionado = false;
+                        ok++;
+                    }
+                }
+
+                JogosEncontradosView.Refresh();
+                RecalcularEstatisticas();
+                AtualizarContagemDeMovidos();
+                plugin.PlayniteApi.Dialogs.ShowMessage(
+                    string.Format("{0} jogo(s) reapontados para a pasta atual.", ok), "Sucesso");
             });
 
             ImportSelectedCommand = new RelayCommand<object>((_) =>
             {
-                var selecionados = JogosEncontrados.Where(j => j.Selecionado && !j.JaExiste).ToList();
+                // Item que mudou de pasta fica de fora mesmo se marcado: importar criaria o
+                // duplicado que a reconciliação existe para evitar. Ele sai pelo Reapontar.
+                var selecionados = JogosEncontrados.Where(j => j.Selecionado && !j.JaExiste && !j.EhMudancaDePasta).ToList();
                 if (selecionados.Count == 0)
                 {
                     plugin.PlayniteApi.Dialogs.ShowMessage("Nenhum jogo novo selecionado para importar.", "Aviso");
@@ -872,10 +996,22 @@ namespace BuscaDeJogosLocais
 
             MarkNotFoundAsUninstalledCommand = new RelayCommand<object>((_) =>
             {
-                var alvos = JogosParaRelinkar.Where(j => j.Selecionado && j.Status == "Não Encontrado").ToList();
+                // Jogo com candidato NUNCA entra aqui, mesmo selecionado: desinstalar o que a
+                // extensão acabou de encontrar no disco é exatamente o erro que esta rodada corrige.
+                var alvos = JogosParaRelinkar.Where(j => j.Selecionado && !j.TemCandidato).ToList();
                 if (alvos.Count == 0)
                 {
-                    plugin.PlayniteApi.Dialogs.ShowMessage("Selecione um ou mais jogos com status \"Não Encontrado\" para marcar como desinstalados.", "Aviso");
+                    plugin.PlayniteApi.Dialogs.ShowMessage(
+                        "Selecione um ou mais jogos sem pasta encontrada para marcar como desinstalados.\n\n" +
+                        "Jogo que a busca localizou no disco não é marcado como desinstalado — use \"Relinkar\" nele.",
+                        "Aviso");
+                    return;
+                }
+
+                if (plugin.PlayniteApi.Dialogs.ShowMessage(
+                        string.Format("Marcar {0} jogo(s) como desinstalados?\n\nSe a pasta onde eles estão hoje não é uma das Pastas Monitoradas, a busca não tinha como encontrá-los — cadastre a pasta e procure de novo antes.", alvos.Count),
+                        "Confirmar", System.Windows.MessageBoxButton.YesNo) != System.Windows.MessageBoxResult.Yes)
+                {
                     return;
                 }
 
@@ -889,127 +1025,130 @@ namespace BuscaDeJogosLocais
                 plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) marcado(s) como desinstalado(s).", alvos.Count), "Sucesso");
             });
 
+            // Procura, para cada jogo cuja instalação sumiu, a pasta que passou a ser a casa dele.
+            //
+            // A versão anterior desta busca tinha três furos, todos observados em biblioteca real:
+            //   1. exigia que o jogo tivesse ação de arquivo — jogo com só InstallDirectory nunca
+            //      era procurado;
+            //   2. ao achar o executável, exigia que o nome da pasta nova fosse igual ao nome do
+            //      jogo OU ao nome da pasta antiga; qualquer outro nome fazia o acerto ser
+            //      DESCARTADO em silêncio, e o jogo voltava como "Não Encontrado" mesmo estando
+            //      no disco. Mover e renomear a pasta é justamente o caso mais comum;
+            //   3. o item "Não Encontrado" nascia MARCADO, então o falso negativo do item 2 virava
+            //      desinstalação com um clique.
+            // Agora a evidência é somada e mostrada (coluna "Por quê"), a varredura de disco
+            // acontece uma vez só, e nada que tenha candidato nasce marcado para desinstalar.
             SearchLostGamesCommand = new RelayCommand<object>((_) =>
             {
                 JogosParaRelinkar.Clear();
 
                 plugin.PlayniteApi.Dialogs.ActivateGlobalProgress((progressArgs) =>
                 {
+                    progressArgs.Text = "Lendo as pastas monitoradas...";
+                    var indice = plugin.IndexarPastasEmDisco(progressArgs.CancelToken);
+                    if (progressArgs.CancelToken.IsCancellationRequested) return;
+
                     var games = plugin.PlayniteApi.Database.Games.ToList();
-                    
+
+                    // Pasta que um jogo SAUDÁVEL da biblioteca já ocupa não pode ser oferecida como
+                    // nova casa de outro: os dois passariam a apontar para a mesma instalação.
+                    var ocupadas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var g in games)
+                    {
+                        if (string.IsNullOrEmpty(g.InstallDirectory)) continue;
+                        if (!Directory.Exists(g.InstallDirectory)) continue;
+                        ocupadas.Add(plugin.NormalizePath(g.InstallDirectory));
+                    }
+
+                    progressArgs.Text = "Procurando os jogos que mudaram de pasta...";
+
                     foreach (var game in games)
                     {
                         if (progressArgs.CancelToken.IsCancellationRequested) break;
 
                         if (game.PluginId != Guid.Empty && game.PluginId != plugin.Id) continue;
-                        if (game.GameActions == null || game.GameActions.Count == 0) continue;
-                        if (game.GameActions.Any(a => a.Type == Playnite.SDK.Models.GameActionType.Emulator)) continue;
+                        // Jogo de emulação fica de fora: o "caminho" dele é a ROM, e várias ROMs
+                        // dividem a mesma pasta — casar por lá apontaria o jogo errado.
+                        if (game.GameActions != null &&
+                            game.GameActions.Any(a => a.Type == Playnite.SDK.Models.GameActionType.Emulator)) continue;
 
-                        var fileAction = game.GameActions.FirstOrDefault(a => a.Type == Playnite.SDK.Models.GameActionType.File);
-                        if (fileAction == null || string.IsNullOrEmpty(fileAction.Path)) continue;
+                        var fileAction = game.GameActions == null
+                            ? null
+                            : game.GameActions.FirstOrDefault(a => a.Type == Playnite.SDK.Models.GameActionType.File);
 
-                        // Jogos instalados cujo executável ainda existe estão saudáveis: não precisam de relink.
-                        if (game.IsInstalled)
+                        // Sem ação de arquivo o jogo AINDA é procurável pela pasta — era o furo nº 1.
+                        string exeAntigoCompleto = null;
+                        if (fileAction != null && !string.IsNullOrEmpty(fileAction.Path))
                         {
-                            string caminhoAtual = plugin.PlayniteApi.ExpandGameVariables(game, fileAction.Path);
-                            if (File.Exists(caminhoAtual)) continue;
+                            exeAntigoCompleto = plugin.PlayniteApi.ExpandGameVariables(game, fileAction.Path);
                         }
 
-                        string exeName = Path.GetFileName(fileAction.Path);
-                        if (string.IsNullOrEmpty(exeName)) continue;
+                        bool pastaSumiu = !string.IsNullOrEmpty(game.InstallDirectory) &&
+                                          !Directory.Exists(game.InstallDirectory);
+                        bool exeSumiu = !string.IsNullOrEmpty(exeAntigoCompleto) && !File.Exists(exeAntigoCompleto);
+
+                        // Nada sumiu: instalação saudável, não é assunto desta tela.
+                        if (!pastaSumiu && !exeSumiu) continue;
+                        // Sem pasta e sem executável não há por onde procurar.
+                        if (string.IsNullOrEmpty(game.InstallDirectory) && string.IsNullOrEmpty(exeAntigoCompleto)) continue;
 
                         var relinkItem = new RelinkGameItem
                         {
                             GameId = game.Id,
                             Nome = game.Name,
-                            CaminhoAntigoExe = fileAction.Path,
-                            Status = "Buscando...",
+                            CaminhoAntigoExe = string.IsNullOrEmpty(exeAntigoCompleto) ? game.InstallDirectory : exeAntigoCompleto,
+                            PastaAntiga = game.InstallDirectory,
+                            Status = "Procurando...",
                             Selecionado = false
                         };
 
                         plugin.PlayniteApi.MainView.UIDispatcher.Invoke(() => { JogosParaRelinkar.Add(relinkItem); });
 
-                        string foundExePath = null;
-                        string foundInstallDir = null;
-                        
-                        if (Settings.Pastas != null)
-                        {
-                            foreach (var pasta in Settings.Pastas)
-                            {
-                                if (!Directory.Exists(pasta)) continue;
-
-                                try
-                                {
-                                    var stack = new Stack<string>();
-                                    stack.Push(pasta);
-
-                                    while (stack.Count > 0 && foundExePath == null)
-                                    {
-                                        if (progressArgs.CancelToken.IsCancellationRequested) break;
-
-                                        string currentDir = stack.Pop();
-                                        
-                                        try
-                                        {
-                                            var files = Directory.EnumerateFiles(currentDir, exeName);
-                                            var match = files.FirstOrDefault(f => Path.GetFileName(f).Equals(exeName, StringComparison.OrdinalIgnoreCase));
-                                            
-                                            if (match != null)
-                                            {
-                                                foundExePath = match;
-                                                foundInstallDir = currentDir;
-                                                
-                                                string parentName = new DirectoryInfo(currentDir).Name;
-                                                if (!parentName.Equals(game.Name, StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    string oldParentName = !string.IsNullOrEmpty(game.InstallDirectory) ? new DirectoryInfo(game.InstallDirectory).Name : "";
-                                                    if (!string.IsNullOrEmpty(oldParentName) && !parentName.Equals(oldParentName, StringComparison.OrdinalIgnoreCase))
-                                                    {
-                                                        // Se o nome da pasta não bater nem com o nome do jogo nem com o anterior, ignora e continua procurando.
-                                                        foundExePath = null;
-                                                        foundInstallDir = null;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        catch (UnauthorizedAccessException) { }
-                                        catch (Exception) { }
-
-                                        if (foundExePath == null)
-                                        {
-                                            try
-                                            {
-                                                var subDirs = Directory.EnumerateDirectories(currentDir);
-                                                foreach (var d in subDirs) stack.Push(d);
-                                            }
-                                            catch (Exception) { }
-                                        }
-                                    }
-                                }
-                                catch (Exception) { }
-                                
-                                if (foundExePath != null) break;
-                            }
-                        }
+                        var achado = plugin.ProcurarNovaCasa(game, exeAntigoCompleto, indice, ocupadas);
 
                         plugin.PlayniteApi.MainView.UIDispatcher.Invoke(() =>
                         {
-                            if (foundExePath != null)
+                            if (achado != null)
                             {
-                                relinkItem.NovoCaminhoExe = foundExePath;
-                                relinkItem.NovoInstallDirectory = foundInstallDir;
-                                relinkItem.Status = "Pronto para Relink";
-                                relinkItem.Selecionado = true;
+                                relinkItem.NovoCaminhoExe = achado.ExeCandidato;
+                                relinkItem.NovoInstallDirectory = achado.PastaCandidata;
+                                relinkItem.Motivo = achado.Motivo;
+                                relinkItem.Confianca = achado.Confianca;
+                                relinkItem.Status = achado.Confiavel ? "Mudou de pasta" : "Provável (confira)";
+                                // Só a evidência forte nasce marcada. Confiança "Média" é convite a
+                                // olhar o motivo, não a apertar Relinkar no automático.
+                                relinkItem.Selecionado = achado.Confiavel;
                             }
                             else
                             {
                                 relinkItem.Status = "Não Encontrado";
-                                // Já vem marcado para agilizar a marcação em lote como desinstalado.
-                                relinkItem.Selecionado = true;
+                                relinkItem.Motivo = "nenhuma pasta monitorada tem evidência suficiente deste jogo";
+                                relinkItem.Confianca = "";
+                                // NUNCA marcado: marcar aqui é oferecer desinstalação em lote para
+                                // o que pode ser só uma pasta monitorada que ficou de fora da lista.
+                                relinkItem.Selecionado = false;
                             }
                         });
                     }
-                }, new Playnite.SDK.GlobalProgressOptions("Buscando novos endereços para jogos perdidos...", true));
+                }, new Playnite.SDK.GlobalProgressOptions("Procurando jogos que mudaram de pasta...", true));
+
+                int mudaram = JogosParaRelinkar.Count(j => j.TemCandidato);
+                int semNada = JogosParaRelinkar.Count(j => !j.TemCandidato);
+
+                if (JogosParaRelinkar.Count == 0)
+                {
+                    plugin.PlayniteApi.Dialogs.ShowMessage(
+                        "Nenhum jogo com pasta ou executável ausente. A biblioteca está inteira.",
+                        "Reparar Desinstalados");
+                    return;
+                }
+
+                plugin.PlayniteApi.Dialogs.ShowMessage(
+                    string.Format(
+                        "{0} jogo(s) mudaram de pasta e podem ser reapontados; {1} não foram encontrados em nenhuma pasta monitorada.\n\n" +
+                        "Antes de marcar como desinstalado, confira se a pasta onde o jogo está hoje é uma das Pastas Monitoradas — se não for, ele não tem como ser encontrado.",
+                        mudaram, semNada),
+                    "Resultado da busca");
             });
 
             RelinkSelectedCommand = new RelayCommand<object>((_) =>
@@ -1026,26 +1165,13 @@ namespace BuscaDeJogosLocais
                 {
                     foreach (var relink in selecionados)
                     {
-                        var game = plugin.PlayniteApi.Database.Games.Get(relink.GameId);
-                        if (game == null) continue;
-
-                        game.InstallDirectory = relink.NovoInstallDirectory;
-                        game.IsInstalled = true;
-
-                        if (game.GameActions != null)
-                        {
-                            var fileAction = game.GameActions.FirstOrDefault(a => a.Type == Playnite.SDK.Models.GameActionType.File);
-                            if (fileAction != null)
-                            {
-                                fileAction.Path = relink.NovoCaminhoExe;
-                                fileAction.WorkingDir = "{InstallDir}";
-                            }
-                        }
-
-                        plugin.PlayniteApi.Database.Games.Update(game);
+                        // Um método só para reapontar, usado também pela aba de busca: o jogo que
+                        // volta precisa sair do histórico de desinstalações nos dois caminhos, e
+                        // duas cópias da mesma gravação divergiriam na primeira mudança.
+                        if (!plugin.RelocarJogo(relink.GameId, relink.NovoInstallDirectory, relink.NovoCaminhoExe)) continue;
 
                         relink.Selecionado = false;
-                        relink.Status = "Relinkado";
+                        relink.Status = "Reapontado";
                         atualizados++;
                     }
                 }
@@ -1197,6 +1323,89 @@ namespace BuscaDeJogosLocais
                 PastasResumo.Sum(p => p.ComProblema),
                 PastasResumo.Sum(p => p.Ignorados),
                 Settings.Pastas.Count);
+
+            AtualizarIndicadores();
+        }
+
+        // ---------------------------------------------------------------------
+        // Indicadores da tela Início
+        // ---------------------------------------------------------------------
+        // A tela antiga só respondia "como eu configuro isso?". Para saber se havia algo errado
+        // era preciso abrir aba por aba e apertar o botão de busca de cada uma. Estes números
+        // saem do resumo que já era calculado — nenhuma varredura de disco a mais.
+
+        private int totalNaBiblioteca;
+        public int TotalNaBiblioteca { get { return totalNaBiblioteca; } set { SetValue(ref totalNaBiblioteca, value); } }
+
+        private int totalForaDaBiblioteca;
+        public int TotalForaDaBiblioteca { get { return totalForaDaBiblioteca; } set { SetValue(ref totalForaDaBiblioteca, value); } }
+
+        private int totalComPastaAusente;
+        public int TotalComPastaAusente { get { return totalComPastaAusente; } set { SetValue(ref totalComPastaAusente, value); } }
+
+        private int totalPastasMonitoradas;
+        public int TotalPastasMonitoradas { get { return totalPastasMonitoradas; } set { SetValue(ref totalPastasMonitoradas, value); } }
+
+        private int totalPastasInacessiveis;
+        public int TotalPastasInacessiveis { get { return totalPastasInacessiveis; } set { SetValue(ref totalPastasInacessiveis, value); } }
+
+        private string diagnosticoTexto = "";
+        public string DiagnosticoTexto { get { return diagnosticoTexto; } set { SetValue(ref diagnosticoTexto, value); } }
+
+        // Quantos itens da última busca são pasta que mudou de lugar. É o que decide se o aviso
+        // de "reapontar" aparece na aba de busca.
+        private int totalMudaramDePasta;
+        public int TotalMudaramDePasta
+        {
+            get { return totalMudaramDePasta; }
+            set { SetValue(ref totalMudaramDePasta, value); OnPropertyChanged("MudaramDePastaTitulo"); }
+        }
+
+        public string MudaramDePastaTitulo
+        {
+            get
+            {
+                return TotalMudaramDePasta == 1
+                    ? "1 jogo mudou de pasta"
+                    : string.Format("{0} jogos mudaram de pasta", TotalMudaramDePasta);
+            }
+        }
+
+        public void AtualizarContagemDeMovidos()
+        {
+            TotalMudaramDePasta = JogosEncontrados.Count(j => j.EhMudancaDePasta);
+        }
+
+        private void AtualizarIndicadores()
+        {
+            TotalNaBiblioteca = PastasResumo.Sum(p => p.NaBiblioteca);
+            TotalForaDaBiblioteca = PastasResumo.Sum(p => p.NaoImportados);
+            TotalComPastaAusente = PastasResumo.Sum(p => p.ComProblema);
+            TotalPastasMonitoradas = Settings.Pastas == null ? 0 : Settings.Pastas.Count;
+            TotalPastasInacessiveis = PastasResumo.Count(p => !p.ExisteEmDisco);
+
+            // O texto diz o que fazer, não só o que existe. "3 jogos com pasta ausente" sem o
+            // próximo passo é o que fazia a pessoa ir direto para "marcar como desinstalado".
+            if (TotalPastasMonitoradas == 0)
+            {
+                DiagnosticoTexto = "Nenhuma pasta monitorada ainda. Cadastre em \"Pastas monitoradas\" a pasta onde seus jogos ficam — é dela que sai tudo o mais.";
+            }
+            else if (TotalPastasInacessiveis > 0)
+            {
+                DiagnosticoTexto = string.Format("{0} pasta(s) monitorada(s) não estão acessíveis agora. Se for um HD externo desligado, ligue antes de qualquer busca: sem ele, os jogos de lá parecem ter sumido.", TotalPastasInacessiveis);
+            }
+            else if (TotalComPastaAusente > 0)
+            {
+                DiagnosticoTexto = string.Format("{0} jogo(s) estão com a pasta ausente. Abra \"Jogos que sumiram\" e procure: pasta que só mudou de lugar é reapontada sem perder tempo de jogo nem capa.", TotalComPastaAusente);
+            }
+            else if (TotalForaDaBiblioteca > 0)
+            {
+                DiagnosticoTexto = string.Format("{0} pasta(s) do disco ainda não viraram jogo na biblioteca. Elas estão em \"Busca e importação\".", TotalForaDaBiblioteca);
+            }
+            else
+            {
+                DiagnosticoTexto = "Tudo o que está nas pastas monitoradas já está na biblioteca, e nenhuma instalação está faltando.";
+            }
         }
 
         private static string SafeFolderName(string path)

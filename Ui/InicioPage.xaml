@@ -1,0 +1,106 @@
+<UserControl x:Class="BuscaDeJogosLocais.Ui.InicioPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="560" d:DesignWidth="900">
+
+    <!--
+        Esta página é nova. A tela antiga abria na aba de configuração, então a pergunta
+        "está tudo certo com minha biblioteca local?" só era respondida abrindo cinco abas e
+        apertando o botão de busca de cada uma. Aqui os números vêm do resumo que já era
+        calculado — nenhuma leitura de disco a mais para abrir a tela.
+    -->
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/BuscaDeJogosLocais;component/Ui/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="20,18,20,20">
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <Border Style="{StaticResource TitleBar}" />
+                <StackPanel>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Jogos locais" />
+                    <TextBlock Style="{StaticResource PageDescription}"
+                               Text="A extensão vigia as pastas que você cadastrou e mantém a biblioteca do Playnite igual ao que está no disco." />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Diagnóstico: o que fazer agora, em uma frase. -->
+            <Border Style="{StaticResource HeroCard}" Margin="0,16,0,14">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="Situação" />
+                    <TextBlock Style="{StaticResource HintText}" Text="{Binding DiagnosticoTexto}" />
+                    <TextBlock Style="{StaticResource MutedText}" Margin="0,10,0,0" Text="{Binding UltimoScanTexto}" />
+                </StackPanel>
+            </Border>
+
+            <!-- Indicadores -->
+            <UniformGrid Columns="4" Margin="0,0,0,4">
+                <Border Style="{StaticResource HomeCard}" Margin="0,0,10,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding TotalNaBiblioteca}" />
+                        <TextBlock Style="{StaticResource MetricLabel}" Text="jogos locais na biblioteca" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HomeCard}" Margin="0,0,10,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding TotalForaDaBiblioteca}" />
+                        <TextBlock Style="{StaticResource MetricLabel}" Text="pastas no disco ainda fora da biblioteca" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HomeCard}" Margin="0,0,10,14">
+                    <StackPanel>
+                        <!-- Zero aqui é a única situação boa, então o número só ganha cor quando
+                             deixa de ser zero. Vermelho permanente vira decoração e para de avisar. -->
+                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding TotalComPastaAusente}"
+                                   Foreground="{Binding TotalComPastaAusente, Converter={StaticResource CountToBrush}}" />
+                        <TextBlock Style="{StaticResource MetricLabel}" Text="jogos com a pasta ausente" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HomeCard}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding TotalPastasMonitoradas}" />
+                        <TextBlock Style="{StaticResource MetricLabel}" Text="pastas monitoradas" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- Aviso de pasta inacessível: é a causa nº 1 de "sumiu tudo" e precisa vir antes
+                 de qualquer botão que marque jogo como desinstalado. -->
+            <Border Style="{StaticResource WarningBanner}"
+                    Visibility="{Binding TotalPastasInacessiveis, Converter={StaticResource CountToVisible}}">
+                <StackPanel Orientation="Horizontal">
+                    <Border Style="{StaticResource BannerGlyph}">
+                        <TextBlock Style="{StaticResource BannerGlyphText}" Text="!" />
+                    </Border>
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource BannerTitle}" Text="Pasta monitorada fora do ar" />
+                        <TextBlock Style="{StaticResource BannerText}"
+                                   Text="Uma ou mais pastas monitoradas não respondem agora — HD externo desligado, unidade de rede fora ou letra de disco trocada. Os jogos que moram nelas vão parecer ausentes em qualquer verificação enquanto isso durar. Resolva o acesso antes de marcar alguém como desinstalado." />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="O que fazer daqui" />
+                    <TextBlock Style="{StaticResource HintText}"
+                               Text="Busca e importação procura jogos novos nas suas pastas. Jogos que sumiram cuida do que mudou de lugar. Duplicados encontra a mesma instalação repetida. Ajustes decide como o nome, a versão e os metadados entram." />
+                    <Border Style="{StaticResource Separator}" />
+                    <TextBlock Style="{StaticResource MutedText}" Text="{Binding VersaoInstaladaTexto}" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

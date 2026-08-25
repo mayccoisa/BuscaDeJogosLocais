@@ -1,40 +1,112 @@
 <UserControl x:Class="BuscaDeJogosLocais.IntegrityResultView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             mc:Ignorable="d" 
-             d:DesignHeight="450" d:DesignWidth="800">
-    <Grid Margin="10">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             Width="920"
+             d:DesignHeight="500" d:DesignWidth="920">
 
-        <TextBlock Text="Os seguintes jogos possuem arquivos ou pastas ausentes. Selecione os itens e escolha uma ação:" Margin="0,0,0,10" FontWeight="Bold" Foreground="White" TextWrapping="Wrap" />
+    <!--
+        Esta janela só sabia oferecer duas saídas, as duas destrutivas: remover da biblioteca
+        ou marcar como desinstalado. Um jogo que apenas mudou de pasta caía nas mesmas duas.
+        Agora a verificação também procura onde o jogo está hoje, e "Reapontar" é a ação em
+        destaque quando existe resposta.
+    -->
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/BuscaDeJogosLocais;component/Ui/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
 
-        <ListView Grid.Row="1" ItemsSource="{Binding Results}" MaxHeight="600" Width="700" Background="#222" Foreground="White">
-            <ListView.View>
-                <GridView>
-                    <GridViewColumn Header="Sel." Width="50">
-                        <GridViewColumn.CellTemplate>
+    <Border Background="{StaticResource PageBackgroundBrush}">
+        <Grid Margin="20,18,20,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" MinHeight="200" MaxHeight="460" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                <StackPanel Orientation="Horizontal">
+                    <Border Style="{StaticResource TitleBar}" />
+                    <TextBlock Style="{StaticResource PageTitle}" Text="Integridade da biblioteca" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource PageDescription}" Margin="18,8,0,0"
+                           Text="{Binding ResumoDoDiagnostico}" />
+            </StackPanel>
+
+            <DataGrid Grid.Row="1" Style="{StaticResource ThemedDataGrid}"
+                      ItemsSource="{Binding Results}" SelectionMode="Single"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="" Width="44">
+                        <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <CheckBox IsChecked="{Binding Selected}" HorizontalAlignment="Center" />
+                                <CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}"
+                                          HorizontalAlignment="Center" Margin="0" />
                             </DataTemplate>
-                        </GridViewColumn.CellTemplate>
-                    </GridViewColumn>
-                    <GridViewColumn Header="Jogo" DisplayMemberBinding="{Binding Name}" Width="200" />
-                    <GridViewColumn Header="Status" DisplayMemberBinding="{Binding StatusSummary}" Width="150" />
-                    <GridViewColumn Header="Caminho" DisplayMemberBinding="{Binding InstallDir}" Width="260" />
-                </GridView>
-            </ListView.View>
-        </ListView>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
-            <Button Content="🚫 Marcar como Desinstalado" Click="MarkUninstalled_Click" Width="210" Height="30" Margin="0,0,10,0" />
-            <Button Content="🗑️ Remover da Biblioteca" Click="Remove_Click" Width="190" Height="30" Margin="0,0,10,0" />
-            <Button Content="Fechar" Click="Cancel_Click" Width="100" Height="30" />
-        </StackPanel>
-    </Grid>
+                    <DataGridTemplateColumn Header="Jogo" Width="2*" MinWidth="190" SortMemberPath="Name">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Style="{StaticResource PathText}" Margin="0,2,0,0"
+                                               Text="{Binding InstallDir}" ToolTip="{Binding InstallDir}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Situação" Width="170" SortMemberPath="StatusSummary">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource StatusPill}">
+                                    <TextBlock Text="{Binding StatusSummary}" FontSize="11.5" FontWeight="SemiBold"
+                                               Foreground="{Binding StatusSummary, Converter={StaticResource StatusBrush}}" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Onde está agora" Width="3*" MinWidth="260" SortMemberPath="NovaPasta">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding NovaPasta, Converter={StaticResource TextOrDash}}"
+                                               FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource GreenBrush}"
+                                               ToolTip="{Binding NovaPasta}" />
+                                    <TextBlock Style="{StaticResource PathText}" Margin="0,2,0,0"
+                                               Text="{Binding Motivo}" TextWrapping="Wrap"
+                                               Visibility="{Binding TemNovaCasa, Converter={StaticResource BoolToVisible}}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Grid.Row="2" Style="{StaticResource ActionBar}" Margin="-20,14,-20,0">
+                <Grid>
+                    <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="0"
+                            Content="Fechar" Click="Cancel_Click" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Style="{StaticResource DangerButton}" Margin="0,0,8,0"
+                                Content="Remover da biblioteca" Click="Remove_Click" />
+                        <Button Style="{StaticResource GhostButton}" Margin="0,0,8,0"
+                                Content="Marcar como desinstalado" Click="MarkUninstalled_Click" />
+                        <Button Style="{StaticResource PrimaryButton}" Margin="0"
+                                Content="Reapontar" Click="Relocate_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
 </UserControl>

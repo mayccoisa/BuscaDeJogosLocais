@@ -3,176 +3,142 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:local="clr-namespace:BuscaDeJogosLocais"
              mc:Ignorable="d"
-             d:DesignHeight="550" d:DesignWidth="900">
+             d:DesignHeight="560" d:DesignWidth="900">
+
     <UserControl.Resources>
-        <local:InverseBooleanConverter x:Key="InverseBooleanConverter" />
-        <local:GroupCountConverter x:Key="GroupCountConverter" />
-        <!-- Cabecalho/celulas seguindo o tema do Playnite (o padrao do WPF fica ilegivel no escuro). -->
-        <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#26FFFFFF" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="BorderBrush" Value="#33FFFFFF" />
-            <Setter Property="BorderThickness" Value="0,0,1,1" />
-            <Setter Property="HorizontalContentAlignment" Value="Left" />
-        </Style>
-        <Style TargetType="DataGridRow">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-        </Style>
-        <Style TargetType="DataGridCell">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="4,3" />
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#33FFFFFF" />
-                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="GroupHeaderStyle" TargetType="{x:Type GroupItem}">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="{x:Type GroupItem}">
-                        <Expander IsExpanded="True" Background="#11FFFFFF" BorderBrush="#33FFFFFF" BorderThickness="0,0,0,1" Margin="0,0,0,5">
-                            <Expander.Header>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="📁 Origem: " FontWeight="Bold" Opacity="0.7" />
-                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="Gold" />
-                                    <TextBlock Opacity="0.6" Margin="5,0,0,0"
-                                               ToolTip="Jogos encontrados nesta pasta / total de pastas no disco">
-                                        <TextBlock.Text>
-                                            <MultiBinding Converter="{StaticResource GroupCountConverter}">
-                                                <Binding Path="Name" />
-                                                <Binding Path="ItemCount" />
-                                            </MultiBinding>
-                                        </TextBlock.Text>
-                                    </TextBlock>
-                                </StackPanel>
-                            </Expander.Header>
-                            <ItemsPresenter />
-                        </Expander>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/BuscaDeJogosLocais;component/Ui/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid Margin="15">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+    <Border Background="{StaticResource PageBackgroundBrush}">
+        <Grid Margin="20,18,20,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" MinHeight="180" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <!-- Cabeçalho -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <TextBlock Text="{Binding HeaderText}" FontSize="14" FontWeight="Bold" Foreground="White" />
-            <TextBlock Text="Selecione os jogos que deseja importar. O nome e a versão podem ser editados na tabela. Use 🚫 para ignorar permanentemente."
-                       FontStyle="Italic" Opacity="0.6" FontSize="11" Margin="0,4,0,0" />
-        </StackPanel>
+            <StackPanel Grid.Row="0" Margin="0,0,0,14">
+                <StackPanel Orientation="Horizontal">
+                    <Border Style="{StaticResource TitleBar}" />
+                    <TextBlock Style="{StaticResource PageTitle}" Text="{Binding HeaderText}" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource PageDescription}" Margin="18,8,0,0"
+                           Text="Marque o que quer importar. Nome e versão podem ser corrigidos aqui na tabela antes de gravar." />
+            </StackPanel>
 
-        <!-- Filtro -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
-            <CheckBox Content="Ocultar jogos já na biblioteca" IsChecked="{Binding OcultarJaExistentes}"
-                      VerticalContentAlignment="Center" Margin="0,0,20,0" />
-            <TextBlock Text="{Binding ContagemTexto}" VerticalAlignment="Center" Opacity="0.7" FontSize="11" />
-        </StackPanel>
+            <!-- Pastas que mudaram de lugar: aparecem antes da tabela porque a ação certa nelas
+                 é reapontar, e importar criaria o mesmo jogo duas vezes na biblioteca. -->
+            <Border Grid.Row="1" Style="{StaticResource OkBanner}"
+                    Visibility="{Binding QuantosMudaramDePasta, Converter={StaticResource CountToVisible}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-        <!-- DataGrid com resultados -->
-        <DataGrid x:Name="GridResultados" Grid.Row="2"
-                  ItemsSource="{Binding ResultadosView}"
-                  AutoGenerateColumns="False"
-                  CanUserAddRows="False"
-                  Background="#22FFFFFF"
-                  RowBackground="Transparent"
-                  AlternatingRowBackground="#11FFFFFF"
-                  GridLinesVisibility="Horizontal"
-                  HorizontalGridLinesBrush="#22FFFFFF"
-                  HeadersVisibility="Column"
-                  SelectionMode="Extended">
-            <DataGrid.GroupStyle>
-                <GroupStyle ContainerStyle="{StaticResource GroupHeaderStyle}" />
-            </DataGrid.GroupStyle>
-            <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Importar" Width="65" CanUserSort="False">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <CheckBox IsChecked="{Binding Selecionado, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
-                                      IsEnabled="{Binding JaExiste, Converter={StaticResource InverseBooleanConverter}}"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
+                    <Border Grid.Column="0" Style="{StaticResource BannerGlyph}"
+                            Background="#2A70D89B" BorderBrush="#A870D89B">
+                        <TextBlock Style="{StaticResource BannerGlyphText}" Foreground="{StaticResource GreenBrush}" Text="→" />
+                    </Border>
 
-                <DataGridTextColumn Header="Jogo" Binding="{Binding Nome, UpdateSourceTrigger=PropertyChanged}" Width="*">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="ToolTip" Value="{Binding NomeOriginal}" />
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Style="{StaticResource BannerTitle}" Text="{Binding TituloMudaramDePasta}" />
+                        <TextBlock Style="{StaticResource BannerText}"
+                                   Text="Estas pastas já são jogos da sua biblioteca que mudaram de lugar ou de nome. Reapontar mantém o registro com o tempo de jogo, as capas e as tags." />
+                    </StackPanel>
 
-                <DataGridTextColumn Header="Versão" Binding="{Binding Versao, UpdateSourceTrigger=PropertyChanged}" Width="110">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Opacity" Value="0.7" />
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
+                    <Button Grid.Column="2" Style="{StaticResource BannerButton}"
+                            Content="Reapontar" Click="OnReapontarClick" />
+                </Grid>
+            </Border>
 
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="130" IsReadOnly="True">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding JaExiste}" Value="True">
-                                    <Setter Property="Foreground" Value="#888888" />
-                                    <Setter Property="FontStyle" Value="Italic" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding JaExiste}" Value="False">
-                                    <Setter Property="Foreground" Value="LightGreen" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
+                <CheckBox Content="Ocultar o que já está na biblioteca" IsChecked="{Binding OcultarJaExistentes}"
+                          VerticalAlignment="Center" Margin="0,0,20,0" />
+                <TextBlock Style="{StaticResource MutedText}" VerticalAlignment="Center" Text="{Binding ContagemTexto}" />
+            </StackPanel>
 
-                <DataGridTextColumn Header="Pasta" Binding="{Binding PastaMonitoradaPai}" Width="180" IsReadOnly="True">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Opacity" Value="0.6" />
-                        </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
+            <DataGrid x:Name="GridResultados" Grid.Row="3" Style="{StaticResource ThemedDataGrid}"
+                      ItemsSource="{Binding ResultadosView}" SelectionMode="Extended"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                <DataGrid.GroupStyle>
+                    <GroupStyle ContainerStyle="{StaticResource GroupHeaderStyle}" />
+                </DataGrid.GroupStyle>
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="" Width="44" CanUserSort="False">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding Selecionado, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                          IsEnabled="{Binding JaExiste, Converter={StaticResource InverseBoolean}}"
+                                          HorizontalAlignment="Center" Margin="0" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="Ignorar" Width="65" CanUserSort="False">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Button Content="🚫" ToolTip="Não mostrar este jogo em buscas futuras"
-                                    Tag="{Binding}"
-                                    Click="OnIgnorarClick"
-                                    Padding="4,2"
-                                    HorizontalAlignment="Center"
-                                    Cursor="Hand"
-                                    Background="Transparent"
-                                    BorderThickness="0" />
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-            </DataGrid.Columns>
-        </DataGrid>
+                    <DataGridTextColumn Header="Jogo" Binding="{Binding Nome, UpdateSourceTrigger=PropertyChanged}" Width="*">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="ToolTip" Value="{Binding NomeOriginal}" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
 
-        <!-- Botões -->
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Content="✅ IMPORTAR SELECIONADOS" Click="OnImportarClick"
-                    Padding="15,7" Margin="0,0,10,0" Cursor="Hand" />
-            <Button Content="Fechar" Click="OnFecharClick" Padding="15,7" Cursor="Hand" />
-        </StackPanel>
-    </Grid>
+                    <DataGridTextColumn Header="Versão" Binding="{Binding Versao, UpdateSourceTrigger=PropertyChanged}" Width="110" />
+
+                    <DataGridTemplateColumn Header="Situação" Width="150" SortMemberPath="Status">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource StatusPill}">
+                                    <TextBlock Text="{Binding Status}" FontSize="11.5" FontWeight="SemiBold"
+                                               Foreground="{Binding Status, Converter={StaticResource StatusBrush}}" />
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Pasta" Width="260" SortMemberPath="PastaRaiz">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Style="{StaticResource PathText}" Text="{Binding PastaRaiz}" ToolTip="{Binding PastaRaiz}" />
+                                    <TextBlock Style="{StaticResource PathText}" Margin="0,2,0,0"
+                                               Text="{Binding MovidoDePasta, StringFormat=antes em {0}}"
+                                               ToolTip="{Binding MotivoMudanca}"
+                                               Visibility="{Binding EhMudancaDePasta, Converter={StaticResource BoolToVisible}}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="" Width="90" CanUserSort="False">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource CellButton}" Content="Ignorar"
+                                        ToolTip="Não mostrar esta pasta em buscas futuras"
+                                        Tag="{Binding}" Click="OnIgnorarClick" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Grid.Row="4" Style="{StaticResource ActionBar}" Margin="-20,14,-20,0">
+                <Grid>
+                    <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="0"
+                            Content="Fechar" Click="OnFecharClick" />
+                    <Button Style="{StaticResource PrimaryButton}" HorizontalAlignment="Right" Margin="0"
+                            Content="Importar selecionados" Click="OnImportarClick" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
 </UserControl>

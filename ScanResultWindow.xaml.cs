@@ -20,8 +20,26 @@ namespace BuscaDeJogosLocais
         private ObservableCollection<ScannedGame> resultados;
         private Action<List<ScannedGame>> onImportar;
         private Action<ScannedGame> onIgnorar;
+        private Action<List<ScannedGame>> onReapontar;
 
         public ICollectionView ResultadosView { get; private set; }
+
+        // Quantas pastas desta lista são, na verdade, jogos que a biblioteca já tem e que
+        // mudaram de lugar. Enquanto isto for zero, o aviso e o botão de reapontar não existem.
+        public int QuantosMudaramDePasta
+        {
+            get { return resultados.Count(g => g.EhMudancaDePasta); }
+        }
+
+        public string TituloMudaramDePasta
+        {
+            get
+            {
+                return QuantosMudaramDePasta == 1
+                    ? "1 jogo mudou de pasta"
+                    : string.Format("{0} jogos mudaram de pasta", QuantosMudaramDePasta);
+            }
+        }
 
         private bool ocultarJaExistentes = true;
         public bool OcultarJaExistentes
@@ -32,25 +50,32 @@ namespace BuscaDeJogosLocais
 
         public string HeaderText
         {
-            get { return string.Format("{0} jogo(s) encontrado(s) nas pastas monitoradas.", resultados.Count); }
+            get { return string.Format("{0} pasta(s) encontrada(s)", resultados.Count); }
         }
 
         public string ContagemTexto
         {
             get
             {
-                int novos = resultados.Count(g => !g.JaExiste);
+                // Pasta que mudou de lugar não é "novo": contá-la como novidade é o que fazia a
+                // pessoa importar e acabar com o mesmo jogo duas vezes na biblioteca.
+                int movidos = QuantosMudaramDePasta;
+                int novos = resultados.Count(g => !g.JaExiste && !g.EhMudancaDePasta);
                 int existentes = resultados.Count(g => g.JaExiste);
-                return string.Format("{0} novo(s) | {1} já na biblioteca", novos, existentes);
+                return string.Format("{0} novo(s) · {1} mudaram de pasta · {2} já na biblioteca", novos, movidos, existentes);
             }
         }
 
-        public ScanResultWindow(ObservableCollection<ScannedGame> resultados, Action<List<ScannedGame>> importar, Action<ScannedGame> ignorar)
+        public ScanResultWindow(ObservableCollection<ScannedGame> resultados,
+            Action<List<ScannedGame>> importar,
+            Action<ScannedGame> ignorar,
+            Action<List<ScannedGame>> reapontar)
         {
             InitializeComponent();
             this.resultados = resultados;
             this.onImportar = importar;
             this.onIgnorar = ignorar;
+            this.onReapontar = reapontar;
             this.DataContext = this;
 
             ResultadosView = CollectionViewSource.GetDefaultView(resultados);
@@ -79,9 +104,23 @@ namespace BuscaDeJogosLocais
             Notify("ContagemTexto");
         }
 
+        private void OnReapontarClick(object sender, RoutedEventArgs e)
+        {
+            var movidos = resultados.Where(j => j.EhMudancaDePasta).ToList();
+            if (movidos.Count == 0 || onReapontar == null) return;
+
+            onReapontar(movidos);
+
+            ResultadosView.Refresh();
+            Notify("QuantosMudaramDePasta");
+            Notify("TituloMudaramDePasta");
+            Notify("ContagemTexto");
+        }
+
         private void OnImportarClick(object sender, RoutedEventArgs e)
         {
-            var selecionados = resultados.Where(j => j.Selecionado && !j.JaExiste).ToList();
+            // Pasta que mudou de lugar fica de fora mesmo se marcada: ela sai pelo Reapontar.
+            var selecionados = resultados.Where(j => j.Selecionado && !j.JaExiste && !j.EhMudancaDePasta).ToList();
             if (selecionados.Count == 0)
             {
                 MessageBox.Show("Nenhum jogo novo selecionado para importar.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Information);

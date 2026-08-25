@@ -1,0 +1,193 @@
+<UserControl x:Class="BuscaDeJogosLocais.Ui.HistoricoPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="560" d:DesignWidth="900">
+
+    <!--
+        Quatro abas do topo (Histórico de Importação, Excluídos, Desinstalados e Duplicados
+        Removidos) eram, todas, a mesma coisa: registro do que já aconteceu. Elas ocupavam
+        metade da barra de abas e empurravam para o fim as telas que a pessoa usa. Aqui viram
+        abas laterais de uma página só.
+    -->
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/BuscaDeJogosLocais;component/Ui/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid Margin="20,18,20,18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="260" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
+            <Border Style="{StaticResource TitleBar}" />
+            <StackPanel>
+                <TextBlock Style="{StaticResource PageTitle}" Text="Histórico" />
+                <TextBlock Style="{StaticResource PageDescription}"
+                           Text="O que a extensão já fez na sua biblioteca: o que importou, o que você mandou ignorar, o que marcou como desinstalado e as pastas duplicadas que foram para a Lixeira." />
+            </StackPanel>
+        </StackPanel>
+
+        <TabControl Grid.Row="1" Style="{StaticResource SideTabControl}" ItemContainerStyle="{StaticResource SideTabItem}">
+
+            <!-- Importações -->
+            <TabItem Header="Importações">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Style="{StaticResource StatusLabel}" Text="Origem:" Margin="0,0,8,0" />
+                        <ComboBox ItemsSource="{Binding OpcoesPastas}" SelectedValue="{Binding FiltroPastaSelecionada}" Width="230" />
+                    </StackPanel>
+
+                    <DataGrid Grid.Row="1" Style="{StaticResource ThemedDataGrid}"
+                              ItemsSource="{Binding HistoricoView}" IsReadOnly="True"
+                              VerticalScrollBarVisibility="Auto">
+                        <DataGrid.GroupStyle>
+                            <GroupStyle ContainerStyle="{StaticResource GroupHeaderStyle}" />
+                        </DataGrid.GroupStyle>
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Data" Binding="{Binding DataImportacao}" Width="150" />
+                            <DataGridTextColumn Header="Jogo" Binding="{Binding NomeJogo}" Width="*" />
+                            <DataGridTemplateColumn Header="Origem" Width="2*" SortMemberPath="Origem">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Style="{StaticResource PathText}" Text="{Binding Origem}" ToolTip="{Binding Origem}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="2" Style="{StaticResource GhostButton}" HorizontalAlignment="Right" Margin="0,10,0,0"
+                            Content="Limpar histórico" Command="{Binding ClearHistoryCommand}" />
+                </Grid>
+            </TabItem>
+
+            <!-- Ignorados -->
+            <TabItem Header="Ignorados">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Style="{StaticResource HintText}" Margin="0,0,0,10"
+                               Text="Pastas que você mandou a busca ignorar. Remover da lista faz elas voltarem a aparecer nos resultados." />
+
+                    <DataGrid x:Name="ExcludedGrid" Grid.Row="1" Style="{StaticResource ThemedDataGrid}"
+                              ItemsSource="{Binding ExcludedView}" IsReadOnly="True" SelectionMode="Single"
+                              VerticalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Jogo" Binding="{Binding NomeJogo}" Width="*" />
+                            <DataGridTextColumn Header="Pasta de origem" Binding="{Binding PastaMonitoradaPai}" Width="*" />
+                            <DataGridTextColumn Header="Ignorado em" Binding="{Binding DataExclusao}" Width="150" />
+                            <DataGridTemplateColumn Header="Executável" Width="2*" SortMemberPath="CaminhoExe">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Style="{StaticResource PathText}" Text="{Binding CaminhoExe}" ToolTip="{Binding CaminhoExe}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="2" Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="0,10,0,0"
+                            Content="Voltar a considerar o selecionado"
+                            Command="{Binding RemoveExcludedCommand}"
+                            CommandParameter="{Binding SelectedItem, ElementName=ExcludedGrid}" />
+                </Grid>
+            </TabItem>
+
+            <!-- Desinstalados -->
+            <TabItem Header="Desinstalados">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Style="{StaticResource HintText}" Margin="0,0,0,10"
+                               Text="Jogos que a extensão marcou como desinstalados. Se o jogo continua no disco e só mudou de pasta, prefira &quot;Jogos que sumiram&quot;: lá o caminho é reapontado, e aqui ele volta a ser dado como instalado no caminho antigo." />
+
+                    <DataGrid Grid.Row="1" Style="{StaticResource ThemedDataGrid}"
+                              ItemsSource="{Binding HistoricoDesinstalacoesView}" IsReadOnly="True" SelectionMode="Single"
+                              VerticalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Data" Binding="{Binding DataDesinstalacao}" Width="150" />
+                            <DataGridTextColumn Header="Jogo" Binding="{Binding NomeJogo}" Width="*" />
+                            <DataGridTemplateColumn Header="Pasta de origem" Width="2*" SortMemberPath="Origem">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Style="{StaticResource PathText}" Text="{Binding Origem}" ToolTip="{Binding Origem}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource CellButton}" Content="Reinstalar"
+                                                Command="{Binding DataContext.ReinstalarCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                CommandParameter="{Binding}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="2" Style="{StaticResource GhostButton}" HorizontalAlignment="Right" Margin="0,10,0,0"
+                            Content="Limpar histórico" Command="{Binding ClearUninstallHistoryCommand}" />
+                </Grid>
+            </TabItem>
+
+            <!-- Duplicados removidos -->
+            <TabItem Header="Duplicados removidos">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Style="{StaticResource HintText}" Margin="0,0,0,10"
+                               Text="Pastas de jogos duplicados enviadas para a Lixeira. Para recuperar, restaure a pasta pela Lixeira do Windows e importe o jogo de novo." />
+
+                    <DataGrid Grid.Row="1" Style="{StaticResource ThemedDataGrid}"
+                              ItemsSource="{Binding DuplicatasRemovidasView}" IsReadOnly="True" SelectionMode="Single"
+                              VerticalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Data" Binding="{Binding DataRemocao}" Width="150" />
+                            <DataGridTextColumn Header="Jogo" Binding="{Binding NomeJogo}" Width="*" />
+                            <DataGridTextColumn Header="Tinha save" Binding="{Binding TinhaSave}" Width="95" />
+                            <DataGridTextColumn Header="Destino" Binding="{Binding Destino}" Width="95" />
+                            <DataGridTemplateColumn Header="Pasta removida" Width="2*" SortMemberPath="PastaRemovida">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Style="{StaticResource PathText}" Text="{Binding PastaRemovida}" ToolTip="{Binding PastaRemovida}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Button Grid.Row="2" Style="{StaticResource GhostButton}" HorizontalAlignment="Right" Margin="0,10,0,0"
+                            Content="Limpar histórico" Command="{Binding ClearDuplicateHistoryCommand}" />
+                </Grid>
+            </TabItem>
+
+        </TabControl>
+    </Grid>
+</UserControl>
