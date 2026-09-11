@@ -1,4 +1,4 @@
-<UserControl x:Class="BuscaDeJogosLocais.Ui.PastasPage"
+<UserControl x:Class="BuscaDeJogosLocais.Ui.EmuladoresPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -7,9 +7,12 @@
              d:DesignHeight="560" d:DesignWidth="900">
 
     <!--
-        A tabela desta página é a que já sumiu uma vez: ela dividia a aba com quatro blocos de
-        configuração, os blocos cresceram e a linha "*" dela virou zero pixel. As opções foram
-        para a aba Ajustes e aqui a tabela ocupa a página inteira, com altura mínima própria.
+        A aba de emuladores é a gêmea de "Pastas monitoradas", do lado da emulação: mesma
+        pergunta, mesmo formato de tabela, mesmos dois botões por linha. Quem aprendeu a ler uma
+        não precisa aprender a outra.
+
+        A tabela ocupa a página inteira e tem altura mínima própria — foi a linha "*" espremida
+        por blocos de configuração que fez a tabela de pastas sumir com zero pixel uma vez.
     -->
     <UserControl.Resources>
         <ResourceDictionary>
@@ -30,37 +33,55 @@
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,14">
             <Border Style="{StaticResource TitleBar}" />
             <StackPanel>
-                <TextBlock Style="{StaticResource PageTitle}" Text="Pastas monitoradas" />
+                <TextBlock Style="{StaticResource PageTitle}" Text="Emuladores" />
                 <TextBlock Style="{StaticResource PageDescription}"
-                           Text="As pastas de onde os jogos saem. Cada linha mostra quanto daquela pasta já virou jogo na biblioteca — e o que ficou de fora." />
+                           Text="Os emuladores configurados no Playnite, com a versão de cada um e o que há nas pastas que ele varre — quanto já virou jogo na biblioteca e quanto ficou de fora." />
             </StackPanel>
         </StackPanel>
 
         <Border Grid.Row="1" Style="{StaticResource Card}" Padding="14,12">
             <StackPanel Orientation="Horizontal">
-                <Button Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" VerticalAlignment="Center"
-                        Content="Adicionar pasta" Command="{Binding AddFolderCommand}" />
-                <Button Style="{StaticResource GhostButton}" Margin="0,0,16,0" VerticalAlignment="Center"
-                        Content="Atualizar resumo" Command="{Binding AtualizarResumoPastasCommand}" />
-                <TextBlock Style="{StaticResource StatusLabel}" MaxWidth="560"
-                           Text="Pasta inacessível aqui significa HD desligado ou letra de disco trocada — e faz todos os jogos dela parecerem ausentes até você resolver." />
+                <Button Style="{StaticResource PrimaryButton}" Margin="0,0,16,0" VerticalAlignment="Center"
+                        Content="Atualizar" Command="{Binding AtualizarEmuladoresCommand}" />
+                <TextBlock Style="{StaticResource StatusLabel}" MaxWidth="620" TextWrapping="Wrap"
+                           Text="A leitura varre as pastas de ROM inteiras, então ela é sob demanda: numa coleção grande são dezenas de milhares de arquivos, e fazer isso na abertura travaria a tela." />
             </StackPanel>
         </Border>
 
         <DataGrid Grid.Row="2" Style="{StaticResource ThemedDataGrid}"
-                  ItemsSource="{Binding PastasResumo}" IsReadOnly="True"
+                  ItemsSource="{Binding Emuladores}" IsReadOnly="True"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
             <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Pasta" Width="*" MinWidth="240" SortMemberPath="Caminho">
+                <DataGridTemplateColumn Header="Emulador" Width="*" MinWidth="200" SortMemberPath="Nome">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding Caminho}" FontSize="12.5" TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding Caminho}" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal">
+                                <!-- O ícone sai do próprio .exe do emulador: o Playnite não
+                                     distribui ícone de emulador nenhum. Sem ícone a coluna
+                                     encolhe para zero em vez de deixar um quadrado vazio. -->
+                                <Image Width="20" Height="20" Margin="0,0,8,0" VerticalAlignment="Center"
+                                       Source="{Binding Icone}"
+                                       Visibility="{Binding TemIcone, Converter={StaticResource BoolToVisible}}"
+                                       RenderOptions.BitmapScalingMode="HighQuality" />
+                                <TextBlock Text="{Binding Nome}" FontSize="12.5" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding Executavel}" />
+                            </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="Situação" Width="170" SortMemberPath="StatusTexto">
+                <DataGridTextColumn Header="Versão" Binding="{Binding Versao}" Width="120" />
+
+                <DataGridTemplateColumn Header="Console" Width="170" SortMemberPath="Plataformas">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Plataformas}" FontSize="12.5" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Plataformas}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Header="Situação" Width="180" SortMemberPath="StatusTexto">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <Border Style="{StaticResource StatusPill}">
@@ -72,23 +93,18 @@
                 </DataGridTemplateColumn>
 
                 <DataGridTextColumn Header="Na biblioteca" Binding="{Binding NaBiblioteca}" Width="105" />
-                <DataGridTextColumn Header="Fora" Binding="{Binding NaoImportados}" Width="70" />
-                <DataGridTextColumn Header="Com problema" Binding="{Binding ComProblema}" Width="115" />
-                <DataGridTextColumn Header="Ignorados" Binding="{Binding Ignorados}" Width="90" />
+                <DataGridTextColumn Header="Fora" Binding="{Binding ForaDaBiblioteca}" Width="70" />
 
                 <DataGridTemplateColumn Header="" Width="200" CanUserSort="False">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
                                 <Button Style="{StaticResource CellButton}" Content="Ver jogos"
-                                        Command="{Binding DataContext.VerJogosDaPastaCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        Command="{Binding DataContext.VerJogosDoEmuladorCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                         CommandParameter="{Binding}" />
-                                <!-- Atalho para o Explorador, aqui na linha e não só dentro de
-                                     "Ver jogos": boa parte das vezes a pessoa quer ir direto para
-                                     a pasta, sem passar pela lista de jogos. -->
                                 <Button Style="{StaticResource CellButton}" Margin="6,0,0,0"
                                         Content="Abrir pasta"
-                                        ToolTip="Abre esta pasta no Explorador do Windows."
+                                        ToolTip="Abre a pasta de varredura deste emulador no Explorador do Windows."
                                         Command="{Binding DataContext.AbrirPastaCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                         CommandParameter="{Binding}" />
                             </StackPanel>
@@ -99,7 +115,8 @@
         </DataGrid>
 
         <Border Grid.Row="3" Style="{StaticResource ActionBar}" Margin="-20,14,-20,0">
-            <TextBlock Style="{StaticResource MutedText}" Text="{Binding PastasResumoTexto}" />
+            <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap"
+                       Text="{Binding EmuladoresResumoTexto}" />
         </Border>
     </Grid>
 </UserControl>

@@ -288,6 +288,52 @@ class RegressionTests
         Check("...com confianca Media, nao Alta",
             mesmoExeOutroTamanho != null && !mesmoExeOutroTamanho.Confiavel);
 
+        // ---- Nome de executavel sozinho nao aponta jogo (bug do lancador de DRM) ----
+        // "Sword Art Online Fractured Daydream" foi dado como movido para a pasta de
+        // "MARVEL Tokon Fighting Souls" porque os dois usam start_protected_game.exe (Denuvo).
+        // Nome de arquivo repetido no disco inteiro e coincidencia de embalagem, nao prova.
+        Console.WriteLine("[So o nome do executavel nao basta]");
+
+        Check("start_protected_game e tratado como nome generico",
+            LocalGameUtils.IsGenericExeName(@"E:\Jogos\X\start_protected_game.exe"));
+        Check("gamelaunchhelper e tratado como nome generico",
+            LocalGameUtils.IsGenericExeName(@"E:\Jogos\X\gamelaunchhelper.exe"));
+
+        var lancadorDeDrm = LocalGameUtils.AvaliarRelocalizacao(
+            "Sword Art Online Fractured Daydream",
+            @"E:\SWORD-ART-ONLINE-Fractured-Daydream", @"E:\SWORD-ART-ONLINE-Fractured-Daydream\start_protected_game.exe", 0,
+            @"J:\Games\MARVEL Tokon Fighting Souls", @"J:\Games\MARVEL Tokon Fighting Souls\start_protected_game.exe", 0);
+        Check("mesmo lancador de DRM nao vira candidato", lancadorDeDrm == null);
+
+        // Executavel proprio, mas nada mais casando: fica marcado para quem chama descartar.
+        var soONomeDoExe = LocalGameUtils.AvaliarRelocalizacao(
+            "Foo Bar",
+            @"D:\Jogos\Foo Bar", @"D:\Jogos\Foo Bar\foobar.exe", 0,
+            @"E:\Jogos\Baz Qux", @"E:\Jogos\Baz Qux\foobar.exe", 0);
+        Check("mesmo exe sem mais nada e marcado como so-nome-do-exe",
+            soONomeDoExe != null && soONomeDoExe.SomenteNomeDoExe);
+        Check("exe unico no disco tira a marca de so-nome-do-exe",
+            LocalGameUtils.ReforcarPorExclusividade(soONomeDoExe, @"D:\Jogos\Foo Bar\foobar.exe", 1).SomenteNomeDoExe == false);
+
+        var exeMaisNome = LocalGameUtils.AvaliarRelocalizacao(
+            "Hades",
+            @"D:\Jogos\Hades", @"D:\Jogos\Hades\Hades.exe", 0,
+            @"E:\Jogos\Hades", @"E:\Jogos\Hades\Hades.exe", 0);
+        Check("exe com nome de pasta batendo nao e so-nome-do-exe",
+            exeMaisNome != null && !exeMaisNome.SomenteNomeDoExe);
+
+        // ---- PastaMonitoradaDe ----
+        Console.WriteLine("[PastaMonitoradaDe]");
+        var monitoradas = new List<string> { @"F:\Fighting", @"E:\Jogos", @"F:\Fighting\Indies" };
+        Eq("acha a pasta monitorada do caminho", @"F:\Fighting",
+            LocalGameUtils.PastaMonitoradaDe(@"F:\Fighting\Jump Force\JUMP_FORCE.exe", monitoradas));
+        Eq("a pasta mais especifica vence", @"F:\Fighting\Indies",
+            LocalGameUtils.PastaMonitoradaDe(@"F:\Fighting\Indies\Celeste", monitoradas));
+        Check("caminho fora das monitoradas devolve null",
+            LocalGameUtils.PastaMonitoradaDe(@"J:\Games\X", monitoradas) == null);
+        Check("caminho vazio devolve null", LocalGameUtils.PastaMonitoradaDe("", monitoradas) == null);
+        Check("lista null devolve null", LocalGameUtils.PastaMonitoradaDe(@"F:\Fighting\X", null) == null);
+
         // ---- ReforcarPorExclusividade ----
         // O caso REAL de pasta movida: o exe antigo sumiu junto com a pasta, entao o tamanho
         // nao pode ser comparado. Sobra o nome do executavel -- que, sendo unico no disco
@@ -417,6 +463,87 @@ class RegressionTests
             LocalGameUtils.MelhorExeDaPasta("Jogo", null, null, @"E:\B\J", new List<string>()) == null);
         Check("lista null de exe devolve null",
             LocalGameUtils.MelhorExeDaPasta("Jogo", null, null, @"E:\B\J", null) == null);
+
+        // ---- EhArquivoDeRom ----
+        //
+        // O critério tem que ser o MESMO que o Playnite usa para importar. Sendo mais frouxo, a
+        // aba de emuladores acusa de "fora da biblioteca" arquivo que o Playnite nunca importaria
+        // — e manda a pessoa procurar um problema que não existe.
+        Console.WriteLine();
+        Console.WriteLine("[EhArquivoDeRom]");
+
+        var extPs2 = new List<string> { "iso", "chd", "bin" };
+
+        Check("extensao declarada pelo perfil entra",
+            LocalGameUtils.EhArquivoDeRom(@"D:\Roms\PS2\jogo.iso", extPs2));
+        Check("o Playnite guarda a extensao SEM ponto, e com ponto tambem casa",
+            LocalGameUtils.EhArquivoDeRom(@"D:\Roms\PS2\jogo.chd", new List<string> { ".chd" }));
+        Check("maiuscula nao muda nada",
+            LocalGameUtils.EhArquivoDeRom(@"D:\Roms\PS2\JOGO.ISO", extPs2));
+        Check("fora da lista declarada NAO entra",
+            !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\PS2\capa.png", extPs2));
+        Check("nem outra extensao de rom, se o perfil nao declarou",
+            !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\PS2\jogo.nsp", extPs2));
+
+        // Sem extensão declarada a regra inverte: aceita tudo menos o lixo conhecido. É o único
+        // caminho honesto — uma lista de permitidos escrita por mim erraria em todo console que
+        // eu não conheço, e formatos de ROM são milhares.
+        Check("sem perfil declarando, extensao de rom conhecida conta",
+            LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\jogo.z64", null));
+        Check("sem perfil declarando, extensao desconhecida tambem conta",
+            LocalGameUtils.EhArquivoDeRom(@"D:\Roms\X\jogo.formatoqueeunaoconheco", new List<string>()));
+        Check("save nunca conta como rom",
+            !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\jogo.sav", null));
+        Check("imagem de capa nunca conta como rom",
+            !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\capa.jpg", null));
+        Check("o proprio emulador nunca conta como rom",
+            !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\project64.exe", null));
+        Check("arquivo sem extensao nao conta",
+            !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\LEIAME", null));
+        Check("caminho vazio nao conta",
+            !LocalGameUtils.EhArquivoDeRom("", extPs2));
+        Check("caminho null nao conta",
+            !LocalGameUtils.EhArquivoDeRom(null, extPs2));
+
+        // ---- NomeDeRomParaExibicao ----
+        Console.WriteLine();
+        Console.WriteLine("[NomeDeRomParaExibicao]");
+
+        Eq("tira so a extensao", "Chrono Cross (USA) (Disc 1)",
+            LocalGameUtils.NomeDeRomParaExibicao(@"D:\Roms\PSX\Chrono Cross (USA) (Disc 1).chd"));
+        // Região e revisão entre parênteses ficam: em nome de ROM isso é informação, e é o que
+        // separa dois arquivos do mesmo jogo. Passar por uma limpeza de nome de repack
+        // colapsaria os dois num nome só.
+        Eq("regiao e revisao sobrevivem", "Zelda (USA) (Rev 1)",
+            LocalGameUtils.NomeDeRomParaExibicao(@"D:\Roms\Zelda (USA) (Rev 1).z64"));
+        Eq("ponto no meio do nome nao vira extensao", "Sonic 3 & Knuckles",
+            LocalGameUtils.NomeDeRomParaExibicao(@"D:\Roms\Sonic 3 & Knuckles.md"));
+        Eq("caminho vazio devolve vazio", "", LocalGameUtils.NomeDeRomParaExibicao(""));
+
+        // ---- CaminhoParaAbrirNoExplorador ----
+        //
+        // O caso que importa é o que NÃO abre: pasta de HD desligado. Sem a checagem o Explorador
+        // abre "Este Computador" e a pessoa conclui que o botão quebrou, em vez de descobrir que
+        // o disco sumiu — que é a informação de verdade.
+        Console.WriteLine();
+        Console.WriteLine("[CaminhoParaAbrirNoExplorador]");
+
+        string erroAbrir;
+        Check("pasta que existe devolve caminho e nenhum erro",
+            LocalGameUtils.CaminhoParaAbrirNoExplorador(Environment.GetFolderPath(Environment.SpecialFolder.System), out erroAbrir) != null
+            && erroAbrir == null);
+
+        Check("pasta inexistente devolve null",
+            LocalGameUtils.CaminhoParaAbrirNoExplorador(@"Z:\PastaQueNaoExiste\Nunca", out erroAbrir) == null);
+        Check("e o motivo fala em HD desligado",
+            erroAbrir != null && erroAbrir.IndexOf("HD desligado", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        Check("caminho vazio devolve null com motivo",
+            LocalGameUtils.CaminhoParaAbrirNoExplorador("", out erroAbrir) == null && !string.IsNullOrEmpty(erroAbrir));
+        Check("caminho null devolve null com motivo",
+            LocalGameUtils.CaminhoParaAbrirNoExplorador(null, out erroAbrir) == null && !string.IsNullOrEmpty(erroAbrir));
+        Check("caminho invalido nao explode, devolve motivo",
+            LocalGameUtils.CaminhoParaAbrirNoExplorador("::nao<>e|caminho", out erroAbrir) == null && !string.IsNullOrEmpty(erroAbrir));
 
         Console.WriteLine();
         Console.WriteLine(string.Format("Resultado: {0}/{1} passaram, {2} falha(s).", total - failures, total, failures));

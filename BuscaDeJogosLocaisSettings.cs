@@ -214,6 +214,62 @@ namespace BuscaDeJogosLocais
         }
     }
 
+    // Uma ROM vista de dentro de uma pasta de varredura de emulador. É o equivalente do
+    // PastaJogoItem para o lado da emulação, e de propósito: as duas telas respondem à mesma
+    // pergunta ("o que dessa pasta já virou biblioteca?") e devem se parecer.
+    public class EmuladorJogoItem : ObservableObject
+    {
+        public Guid GameId { get; set; }        // Guid.Empty quando ainda não está na biblioteca
+        public string Nome { get; set; }        // nome na biblioteca, ou o nome do arquivo
+        public string Arquivo { get; set; }
+        public string Caminho { get; set; }
+        public string Pasta { get; set; }       // a pasta de varredura de onde este arquivo veio
+        public string Plataforma { get; set; }
+        public string Status { get; set; }      // "Na biblioteca" | "Fora da biblioteca"
+    }
+
+    // Um emulador configurado no Playnite, com o que dá para saber dele sem abrir o app dele.
+    public class EmuladorResumo : ObservableObject
+    {
+        public Guid EmuladorId { get; set; }
+        public string Nome { get; set; }
+        public string Versao { get; set; }          // lida do .exe; "—" quando não dá para ler
+        public string Executavel { get; set; }
+        public bool ExecutavelExiste { get; set; }
+        public string InstallDir { get; set; }
+        public string Plataformas { get; set; }
+        public string Pastas { get; set; }          // as pastas de varredura, separadas por " · "
+        public int TotalPastas { get; set; }
+        public int TotalArquivos { get; set; }
+        public int NaBiblioteca { get; set; }
+        public int ForaDaBiblioteca { get; set; }
+
+        // O ícone do próprio executável do emulador. Fica como object para este arquivo não
+        // precisar de System.Drawing nem de WPF no tipo — quem preenche é o plugin.
+        private object icone;
+        public object Icone { get { return icone; } set { SetValue(ref icone, value); } }
+        public bool TemIcone { get { return icone != null; } }
+
+        public List<EmuladorJogoItem> Itens { get; set; }
+
+        // A primeira pasta de varredura, que é o que o botão "Abrir pasta" usa. Emulador com mais
+        // de uma pasta abre a primeira: abrir todas de uma vez encheria a tela de janelas.
+        public string PrimeiraPasta { get; set; }
+
+        public string StatusTexto
+        {
+            get
+            {
+                if (!ExecutavelExiste) return "Emulador não encontrado";
+                if (TotalPastas == 0) return "Sem pasta de varredura";
+                if (TotalArquivos == 0) return "Pasta vazia";
+                if (NaBiblioteca == 0) return "Nada importado";
+                if (ForaDaBiblioteca == 0) return "Tudo importado";
+                return "Parcialmente importado";
+            }
+        }
+    }
+
     // Uma linha da prévia de limpeza de nomes de jogos já importados.
     public class RenameItem : ObservableObject
     {
@@ -319,6 +375,16 @@ namespace BuscaDeJogosLocais
         public string Nome { get; set; }
         public string CaminhoAntigoExe { get; set; }
         public string PastaAntiga { get; set; }
+
+        // A pasta monitorada que cobre o caminho ANTIGO do jogo, ou null quando nenhuma cobre.
+        // É por ela que a tela filtra: sem isso não havia como responder "e nessa pasta aqui,
+        // o que está faltando?", nem separar o que a busca nem tinha como encontrar.
+        public string PastaMonitoradaPai { get; set; }
+        public string PastaFiltro
+        {
+            get { return string.IsNullOrEmpty(PastaMonitoradaPai) ? RelinkGameItem.ForaDasMonitoradas : PastaMonitoradaPai; }
+        }
+        public const string ForaDasMonitoradas = "Fora das pastas monitoradas";
         public string NovoCaminhoExe { get; set; }
         public string NovoInstallDirectory { get; set; }
 
@@ -455,6 +521,47 @@ namespace BuscaDeJogosLocais
 
         public ObservableCollection<RelinkGameItem> JogosParaRelinkar { get; private set; }
         public ICollectionView JogosParaRelinkarView { get; private set; }
+
+        // Filtro por pasta monitorada da aba "Jogos que sumiram". Separado do FiltroPastaSelecionada
+        // das abas de busca de propósito: escolher a pasta lá muda o que o próximo scan varre, e
+        // aqui só muda o que a lista mostra — juntar os dois faria uma tela mexer na outra.
+        private string filtroPastaReparo = "Todas as Pastas";
+        public string FiltroPastaReparo
+        {
+            get { return filtroPastaReparo; }
+            set
+            {
+                SetValue(ref filtroPastaReparo, value);
+                if (JogosParaRelinkarView != null) JogosParaRelinkarView.Refresh();
+                OnPropertyChanged("ReparoResumoTexto");
+            }
+        }
+
+        public List<string> OpcoesPastasReparo
+        {
+            get
+            {
+                var list = new List<string> { "Todas as Pastas" };
+                if (Settings.Pastas != null) list.AddRange(Settings.Pastas);
+                // Jogo cujo caminho antigo não está sob nenhuma pasta monitorada é o caso que a
+                // tela mais precisa isolar: ele aparece como "Não Encontrado" porque a busca nem
+                // olhou para lá, e não porque o jogo sumiu.
+                list.Add(RelinkGameItem.ForaDasMonitoradas);
+                return list;
+            }
+        }
+
+        public string ReparoResumoTexto
+        {
+            get
+            {
+                int total = JogosParaRelinkar == null ? 0 : JogosParaRelinkar.Count;
+                if (total == 0) return "";
+                int visiveis = JogosParaRelinkar.Count(j => PassaNoFiltroDeReparo(j));
+                if (visiveis == total) return string.Format("{0} jogo(s) na lista.", total);
+                return string.Format("Mostrando {0} de {1} jogo(s). As ações abaixo valem só para o que está visível.", visiveis, total);
+            }
+        }
         
         // Filtros Ativos
         private bool filtrarApenasNovos = false;
@@ -529,6 +636,19 @@ namespace BuscaDeJogosLocais
         public ObservableCollection<PastaResumo> PastasResumo { get; private set; }
         public RelayCommand<object> VerJogosDaPastaCommand { get; private set; }
         public RelayCommand<object> AtualizarResumoPastasCommand { get; private set; }
+        public RelayCommand<object> AbrirPastaCommand { get; private set; }
+
+        // Emuladores: o mesmo resumo das pastas monitoradas, do outro lado da biblioteca.
+        public ObservableCollection<EmuladorResumo> Emuladores { get; private set; }
+        public RelayCommand<object> AtualizarEmuladoresCommand { get; private set; }
+        public RelayCommand<object> VerJogosDoEmuladorCommand { get; private set; }
+
+        private string emuladoresResumoTexto = "Clique em \"Atualizar\" para ler os emuladores configurados.";
+        public string EmuladoresResumoTexto
+        {
+            get { return emuladoresResumoTexto; }
+            set { SetValue(ref emuladoresResumoTexto, value); }
+        }
 
         public ICollectionView ExcludedView { get; private set; }
         public RelayCommand<object> RemoveExcludedCommand { get; private set; }
@@ -575,6 +695,7 @@ namespace BuscaDeJogosLocais
             JogosEncontrados = new ObservableCollection<ScannedGame>();
             JogosParaRelinkar = new ObservableCollection<RelinkGameItem>();
             PastasResumo = new ObservableCollection<PastaResumo>();
+            Emuladores = new ObservableCollection<EmuladorResumo>();
             this.plugin = plugin;
             var savedSettings = plugin.LoadPluginSettings<BuscaDeJogosLocaisSettings>();
             if (savedSettings != null)
@@ -632,6 +753,7 @@ namespace BuscaDeJogosLocais
             HistoricoView.GroupDescriptions.Add(new PropertyGroupDescription("PastaMonitoradaPai"));
 
             JogosParaRelinkarView = CollectionViewSource.GetDefaultView(JogosParaRelinkar);
+            JogosParaRelinkarView.Filter = FilterJogosParaRelinkar;
 
             ExcludedView = CollectionViewSource.GetDefaultView(Settings.CaminhosIgnorados);
             HistoricoDesinstalacoesView = CollectionViewSource.GetDefaultView(Settings.HistoricoDesinstalacoes);
@@ -994,7 +1116,88 @@ namespace BuscaDeJogosLocais
                 window.Width = 950;
                 window.Height = 600;
                 window.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
-                window.Content = new FolderGamesWindow(resumo);
+                window.Content = new FolderGamesWindow(resumo, plugin);
+                window.ShowDialog();
+            });
+
+            // Abre a pasta no Explorador. Aceita o PastaResumo da linha ou o caminho cru, porque
+            // quem chama são dois lugares diferentes: a tabela de pastas monitoradas (que tem o
+            // resumo inteiro) e a janela de jogos da pasta (que só tem o caminho).
+            AbrirPastaCommand = new RelayCommand<object>((param) =>
+            {
+                var resumo = param as PastaResumo;
+                if (resumo != null) { plugin.AbrirPastaNoExplorador(resumo.Caminho); return; }
+
+                var emulador = param as EmuladorResumo;
+                if (emulador != null) { plugin.AbrirPastaNoExplorador(emulador.PrimeiraPasta); return; }
+
+                plugin.AbrirPastaNoExplorador(param as string);
+            });
+
+            // Relê os emuladores configurados. É sob demanda, e não na abertura da tela, porque a
+            // leitura varre as pastas de ROM inteiras — numa coleção de emulação são dezenas de
+            // milhares de arquivos, e pagar isso para quem abriu a tela por outro motivo travaria
+            // a janela de configurações na cara da pessoa.
+            AtualizarEmuladoresCommand = new RelayCommand<object>((_) =>
+            {
+                Emuladores.Clear();
+
+                List<EmuladorResumo> lidos;
+                try
+                {
+                    lidos = plugin.MapearEmuladores();
+                }
+                catch (Exception ex)
+                {
+                    EmuladoresResumoTexto = "Não consegui ler os emuladores: " + ex.Message;
+                    return;
+                }
+
+                foreach (var emulador in lidos) Emuladores.Add(emulador);
+
+                if (lidos.Count == 0)
+                {
+                    EmuladoresResumoTexto =
+                        "Nenhum emulador configurado no Playnite. Eles são cadastrados em " +
+                        "Biblioteca › Configurar emuladores.";
+                    return;
+                }
+
+                int semPasta = lidos.Count(e => e.TotalPastas == 0);
+                int arquivos = lidos.Sum(e => e.TotalArquivos);
+                int fora = lidos.Sum(e => e.ForaDaBiblioteca);
+
+                var texto = string.Format(
+                    "{0} emulador(es) · {1} arquivo(s) nas pastas de varredura · {2} fora da biblioteca.",
+                    lidos.Count, arquivos, fora);
+
+                if (semPasta > 0)
+                {
+                    // Sem pasta de varredura não há como responder "o que está fora?", e a linha
+                    // zerada pareceria "esse emulador não tem jogo nenhum".
+                    texto += string.Format(
+                        " {0} sem pasta de varredura configurada — esses não têm como ser conferidos.",
+                        semPasta);
+                }
+
+                EmuladoresResumoTexto = texto;
+            });
+
+            VerJogosDoEmuladorCommand = new RelayCommand<object>((param) =>
+            {
+                var resumo = param as EmuladorResumo;
+                if (resumo == null) return;
+
+                var window = plugin.PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+                {
+                    ShowMaximizeButton = true,
+                    ShowMinimizeButton = false
+                });
+                window.Title = string.Format("Jogos de {0}", resumo.Nome);
+                window.Width = 950;
+                window.Height = 600;
+                window.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
+                window.Content = new EmulatorGamesWindow(resumo, plugin);
                 window.ShowDialog();
             });
 
@@ -1002,7 +1205,9 @@ namespace BuscaDeJogosLocais
             {
                 // Jogo com candidato NUNCA entra aqui, mesmo selecionado: desinstalar o que a
                 // extensão acabou de encontrar no disco é exatamente o erro que esta rodada corrige.
-                var alvos = JogosParaRelinkar.Where(j => j.Selecionado && !j.TemCandidato).ToList();
+                // Só o que está visível: com um filtro de pasta ligado, agir sobre linha que a
+                // pessoa não está vendo é desinstalar às cegas.
+                var alvos = JogosParaRelinkar.Where(j => PassaNoFiltroDeReparo(j) && j.Selecionado && !j.TemCandidato).ToList();
                 if (alvos.Count == 0)
                 {
                     plugin.PlayniteApi.Dialogs.ShowMessage(
@@ -1064,6 +1269,12 @@ namespace BuscaDeJogosLocais
                         ocupadas.Add(plugin.NormalizePath(g.InstallDirectory));
                     }
 
+                    // Lista das pastas monitoradas para classificar cada jogo perdido. Comparação
+                    // de texto, não de disco: a pasta antiga do jogo já não existe.
+                    var pastasMonitoradas = Settings.Pastas == null
+                        ? new List<string>()
+                        : Settings.Pastas.ToList();
+
                     progressArgs.Text = "Procurando os jogos que mudaram de pasta...";
 
                     foreach (var game in games)
@@ -1102,6 +1313,9 @@ namespace BuscaDeJogosLocais
                             Nome = game.Name,
                             CaminhoAntigoExe = string.IsNullOrEmpty(exeAntigoCompleto) ? game.InstallDirectory : exeAntigoCompleto,
                             PastaAntiga = game.InstallDirectory,
+                            PastaMonitoradaPai = LocalGameUtils.PastaMonitoradaDe(
+                                string.IsNullOrEmpty(game.InstallDirectory) ? exeAntigoCompleto : game.InstallDirectory,
+                                pastasMonitoradas),
                             Status = "Procurando...",
                             Selecionado = false
                         };
@@ -1138,6 +1352,9 @@ namespace BuscaDeJogosLocais
                     }
                 }, new Playnite.SDK.GlobalProgressOptions("Procurando jogos que mudaram de pasta...", true));
 
+                OnPropertyChanged("OpcoesPastasReparo");
+                OnPropertyChanged("ReparoResumoTexto");
+
                 int mudaram = JogosParaRelinkar.Count(j => j.TemCandidato);
                 int semNada = JogosParaRelinkar.Count(j => !j.TemCandidato);
 
@@ -1159,7 +1376,7 @@ namespace BuscaDeJogosLocais
 
             RelinkSelectedCommand = new RelayCommand<object>((_) =>
             {
-                var selecionados = JogosParaRelinkar.Where(j => j.Selecionado && !string.IsNullOrEmpty(j.NovoCaminhoExe)).ToList();
+                var selecionados = JogosParaRelinkar.Where(j => PassaNoFiltroDeReparo(j) && j.Selecionado && !string.IsNullOrEmpty(j.NovoCaminhoExe)).ToList();
                 if (selecionados.Count == 0)
                 {
                     plugin.PlayniteApi.Dialogs.ShowMessage("Nenhum jogo selecionado e pronto para relink.", "Aviso");
@@ -1200,6 +1417,18 @@ namespace BuscaDeJogosLocais
             }
             
             return true;
+        }
+
+        private bool PassaNoFiltroDeReparo(RelinkGameItem item)
+        {
+            if (item == null) return false;
+            if (FiltroPastaReparo == "Todas as Pastas") return true;
+            return item.PastaFiltro.Equals(FiltroPastaReparo, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool FilterJogosParaRelinkar(object item)
+        {
+            return PassaNoFiltroDeReparo(item as RelinkGameItem);
         }
 
         private bool FilterHistorico(object item)

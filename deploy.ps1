@@ -25,6 +25,10 @@ if (!(Test-Path $playniteExtensions)) {
 Copy-Item "$outputPath\BuscaDeJogosLocais.dll" $playniteExtensions -Force
 Copy-Item ".\extension.yaml" $playniteExtensions -Force
 Copy-Item ".\icon.png" $playniteExtensions -Force
+# O icone da BIBLIOTECA e outro arquivo: o icon.png acima e a linha da extensao na lista de
+# complementos, e este e o "Local" no menu de bibliotecas. Esquecer aqui faz a biblioteca ficar
+# sem icone no deploy local, sem erro nenhum no log.
+Copy-Item ".\library-icon.png" $playniteExtensions -Force
 
 if (Test-Path ".\Localization") {
     Copy-Item ".\Localization" $playniteExtensions -Recurse -Force

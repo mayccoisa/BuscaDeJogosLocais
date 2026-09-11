@@ -38,12 +38,16 @@
     <Reference Include="PresentationFramework" />
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <!-- So para ExtractAssociatedIcon: o icone do emulador mora dentro do .exe dele, e nao ha
+         outro jeito de le-lo. O Playnite nao distribui icone de emulador nenhum. -->
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Xaml" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Ui\Converters.cs" />
+    <Compile Include="Ui\IconArt.cs" />
     <Compile Include="Ui\UiKit.cs" />
     <Compile Include="Ui\InicioPage.xaml.cs">
       <DependentUpon>InicioPage.xaml</DependentUpon>
@@ -53,6 +57,9 @@
     </Compile>
     <Compile Include="Ui\PastasPage.xaml.cs">
       <DependentUpon>PastasPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Ui\EmuladoresPage.xaml.cs">
+      <DependentUpon>EmuladoresPage.xaml</DependentUpon>
     </Compile>
     <Compile Include="Ui\ReparoPage.xaml.cs">
       <DependentUpon>ReparoPage.xaml</DependentUpon>
@@ -92,6 +99,9 @@
     <Compile Include="FolderGamesWindow.xaml.cs">
       <DependentUpon>FolderGamesWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="EmulatorGamesWindow.xaml.cs">
+      <DependentUpon>EmulatorGamesWindow.xaml</DependentUpon>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Page Include="Ui\Theme.xaml">
@@ -107,6 +117,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="Ui\PastasPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Ui\EmuladoresPage.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
@@ -154,12 +168,24 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="EmulatorGamesWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <None Include="extension.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- O icone da BIBLIOTECA, que e outro arquivo e outro lugar: o icon.png acima e a linha da
+         extensao na lista de complementos, e este e o "Local" no menu de bibliotecas a esquerda.
+         O LibraryIcon do SDK aponta para um caminho em disco, entao o arquivo precisa sair no
+         pacote — sem o CopyToOutputDirectory ele fica de fora do .pext e o menu volta a nao ter
+         icone nenhum, sem erro no log. -->
+    <None Include="library-icon.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="Localization\*.xaml">

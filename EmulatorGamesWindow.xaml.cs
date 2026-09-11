@@ -7,9 +7,10 @@ using System.Windows.Data;
 
 namespace BuscaDeJogosLocais
 {
-    // Lista os jogos vinculados a uma pasta monitorada e, junto, o que está na pasta
-    // mas ficou de fora da biblioteca — é a resposta para "essa pasta está toda puxada?".
-    public partial class FolderGamesWindow : UserControl, INotifyPropertyChanged
+    // Lista o que há nas pastas de varredura de um emulador e separa o que já virou jogo no
+    // Playnite do que ficou de fora — a mesma pergunta que a FolderGamesWindow responde para as
+    // pastas monitoradas de PC.
+    public partial class EmulatorGamesWindow : UserControl, INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler PropertyChanged;
         private void Notify(string name)
@@ -17,18 +18,17 @@ namespace BuscaDeJogosLocais
             if (PropertyChanged != null) PropertyChanged(this, new PropertyChangedEventArgs(name));
         }
 
-        private readonly PastaResumo resumo;
-
-        // Só para o botão "Abrir pasta": quem sabe avisar que a pasta não abriu é o plugin, que
-        // tem o PlayniteApi.Dialogs. Vem null quando esta tela é construída sem ele, e aí o botão
-        // fica escondido — botão visível que não faz nada é pior do que botão ausente.
+        private readonly EmuladorResumo resumo;
         private readonly BuscaDeJogosLocais plugin;
 
         public ICollectionView ItensView { get; private set; }
 
+        public object Icone { get { return resumo.Icone; } }
+        public bool TemIcone { get { return resumo.Icone != null; } }
+
         public bool PodeAbrirPasta
         {
-            get { return plugin != null && !string.IsNullOrWhiteSpace(resumo.Caminho); }
+            get { return plugin != null && !string.IsNullOrWhiteSpace(resumo.PrimeiraPasta); }
         }
 
         private bool somenteForaDaBiblioteca;
@@ -40,7 +40,7 @@ namespace BuscaDeJogosLocais
 
         public string HeaderText
         {
-            get { return resumo.Caminho; }
+            get { return resumo.Nome; }
         }
 
         public string ResumoText
@@ -48,23 +48,36 @@ namespace BuscaDeJogosLocais
             get
             {
                 return string.Format(
-                    "{0} na biblioteca · {1} não importado(s) · {2} com pasta ausente · {3} ignorado(s)",
-                    resumo.NaBiblioteca, resumo.NaoImportados, resumo.ComProblema, resumo.Ignorados);
+                    "Versão {0} · {1} na biblioteca · {2} fora dela · {3}",
+                    resumo.Versao, resumo.NaBiblioteca, resumo.ForaDaBiblioteca, resumo.Plataformas);
             }
         }
 
-        public FolderGamesWindow(PastaResumo resumo) : this(resumo, null)
+        public string PastasText
         {
+            get
+            {
+                if (resumo.TotalPastas == 0)
+                {
+                    // Sem pasta de varredura a tabela vem vazia, e vazia sem explicação parece
+                    // defeito. O lugar de configurar é do Playnite, não desta extensão.
+                    return "Este emulador não tem pasta de varredura configurada no Playnite " +
+                           "(Biblioteca › Configurar emuladores › Pastas de varredura automática), " +
+                           "então não há como saber o que dele está ou não na biblioteca.";
+                }
+
+                return "Pastas varridas: " + resumo.Pastas;
+            }
         }
 
-        public FolderGamesWindow(PastaResumo resumo, BuscaDeJogosLocais plugin)
+        public EmulatorGamesWindow(EmuladorResumo resumo, BuscaDeJogosLocais plugin)
         {
             InitializeComponent();
             this.resumo = resumo;
             this.plugin = plugin;
             this.DataContext = this;
 
-            var itens = new ObservableCollection<PastaJogoItem>(
+            var itens = new ObservableCollection<EmuladorJogoItem>(
                 resumo.Itens.OrderBy(i => i.Status).ThenBy(i => i.Nome));
 
             ItensView = CollectionViewSource.GetDefaultView(itens);
@@ -74,13 +87,13 @@ namespace BuscaDeJogosLocais
         private bool Filtrar(object item)
         {
             if (!SomenteForaDaBiblioteca) return true;
-            var jogo = (PastaJogoItem)item;
+            var jogo = (EmuladorJogoItem)item;
             return jogo.Status != "Na biblioteca";
         }
 
         private void OnAbrirPastaClick(object sender, RoutedEventArgs e)
         {
-            if (plugin != null) plugin.AbrirPastaNoExplorador(resumo.Caminho);
+            if (plugin != null) plugin.AbrirPastaNoExplorador(resumo.PrimeiraPasta);
         }
 
         private void OnFecharClick(object sender, RoutedEventArgs e)

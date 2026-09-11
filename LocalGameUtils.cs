@@ -27,6 +27,120 @@ namespace BuscaDeJogosLocais
             return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToLowerInvariant();
         }
 
+        // Decide se dá para abrir uma pasta no Explorador, e diz por que não quando não dá.
+        //
+        // A checagem vive aqui, separada do Process.Start, porque o caso que interessa é
+        // justamente o que NÃO deve abrir: pasta de HD desligado ou de letra de disco trocada.
+        // Sem ela o Explorador abre "Este Computador" ou uma janela de erro do Windows, e a pessoa
+        // conclui que o botão está quebrado em vez de descobrir que o disco sumiu — que é a
+        // informação de verdade, e a mesma que a coluna "Situação" já dá na tabela.
+        //
+        // Devolve o caminho pronto para abrir, ou null com o motivo em erro.
+        public static string CaminhoParaAbrirNoExplorador(string caminho, out string erro)
+        {
+            erro = null;
+
+            if (string.IsNullOrWhiteSpace(caminho))
+            {
+                erro = "Essa linha não tem caminho de pasta.";
+                return null;
+            }
+
+            string completo;
+            try
+            {
+                completo = Path.GetFullPath(caminho.Trim().Trim('"'));
+            }
+            catch (Exception)
+            {
+                erro = string.Format("O caminho \"{0}\" não é um caminho válido do Windows.", caminho);
+                return null;
+            }
+
+            if (!Directory.Exists(completo))
+            {
+                erro = string.Format(
+                    "A pasta \"{0}\" não está acessível agora. O caso comum é HD desligado ou letra de disco trocada.",
+                    completo);
+                return null;
+            }
+
+            return completo;
+        }
+
+        // ------------------------------------------------------------------ emuladores
+
+        // Arquivos que aparecem numa pasta de ROM e nunca são ROM. A lista é curta de propósito:
+        // extensão de ROM é coisa de mil formatos (.iso, .chd, .nsp, .z64, .gb, .dat de MAME…) e
+        // uma lista de PERMITIDOS feita por mim erraria em todo console que eu não conheço.
+        // Quando o perfil do emulador declara as extensões dele, é essa lista que manda — esta
+        // aqui só entra quando o perfil não declara nenhuma.
+        public static readonly string[] NaoEhRom =
+        {
+            ".txt", ".nfo", ".log", ".ini", ".cfg", ".xml", ".json", ".url", ".lnk",
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",
+            ".sav", ".srm", ".state", ".ss0", ".ss1", ".mcr", ".mcd",
+            ".exe", ".dll", ".bat", ".cmd", ".ps1", ".md"
+        };
+
+        // Um arquivo conta como ROM desta varredura?
+        //
+        // extensoes vem do perfil do emulador (ImageExtensions). Quando ele declara alguma, ela é
+        // a verdade e nada fora dela entra: é o mesmo critério que o próprio Playnite usa para
+        // importar, e divergir dele faria esta tela mostrar "fora da biblioteca" para arquivo que
+        // o Playnite nunca importaria — acusação falsa, e a pior espécie, porque manda a pessoa
+        // procurar um problema que não existe.
+        public static bool EhArquivoDeRom(string caminho, ICollection<string> extensoes)
+        {
+            if (string.IsNullOrWhiteSpace(caminho)) return false;
+
+            string ext;
+            try { ext = Path.GetExtension(caminho); }
+            catch (Exception) { return false; }
+
+            if (ext == null) ext = string.Empty;
+            ext = ext.ToLowerInvariant();
+
+            if (extensoes != null && extensoes.Count > 0)
+            {
+                foreach (var declarada in extensoes)
+                {
+                    if (string.IsNullOrWhiteSpace(declarada)) continue;
+                    // O Playnite guarda a extensão SEM ponto ("iso", "chd"); aceitar as duas
+                    // formas evita depender desse detalhe.
+                    var alvo = declarada.Trim().ToLowerInvariant();
+                    if (!alvo.StartsWith(".")) alvo = "." + alvo;
+                    if (alvo == ext) return true;
+                }
+                return false;
+            }
+
+            if (ext.Length == 0) return false;
+            foreach (var lixo in NaoEhRom)
+            {
+                if (lixo == ext) return false;
+            }
+            return true;
+        }
+
+        // O nome que aparece na tela para uma ROM que ainda não está na biblioteca: o nome do
+        // arquivo sem a extensão. Não passa pela limpeza de nome de release (LimparNomeDeJogo)
+        // de propósito — nome de ROM carrega região e revisão entre parênteses ("(USA) (Rev 1)"),
+        // que ali é informação, e não lixo de repack.
+        public static string NomeDeRomParaExibicao(string caminho)
+        {
+            if (string.IsNullOrWhiteSpace(caminho)) return string.Empty;
+            try
+            {
+                var nome = Path.GetFileNameWithoutExtension(caminho);
+                return string.IsNullOrWhiteSpace(nome) ? Path.GetFileName(caminho) : nome;
+            }
+            catch (Exception)
+            {
+                return caminho;
+            }
+        }
+
         // Retorna true se o arquivo NÃO deve ser considerado um jogo
         // (não é .exe, ou cai na blacklist de utilitários/instaladores).
         public static bool IsExplosiveFile(string path)
@@ -78,6 +192,30 @@ namespace BuscaDeJogosLocais
             if (p.Equals(f, StringComparison.OrdinalIgnoreCase)) return true;
 
             return p.StartsWith(f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Qual das pastas monitoradas contém este caminho. Devolve null quando nenhuma contém —
+        /// e essa resposta é informação, não falha: jogo fora das pastas monitoradas não tem como
+        /// ser encontrado pela busca, e é isso que a tela precisa poder separar do resto.
+        /// Vence a pasta mais específica, para "D:\Jogos\Indies" ganhar de "D:\Jogos".
+        /// Não toca o disco: compara texto, então funciona para pasta que já sumiu.
+        /// </summary>
+        public static string PastaMonitoradaDe(string caminho, IEnumerable<string> pastasMonitoradas)
+        {
+            if (string.IsNullOrEmpty(caminho) || pastasMonitoradas == null) return null;
+
+            string melhor = null;
+            int melhorTamanho = -1;
+            foreach (string pasta in pastasMonitoradas)
+            {
+                if (string.IsNullOrEmpty(pasta)) continue;
+                if (!IsUnderFolder(caminho, pasta)) continue;
+
+                int tamanho = NormalizePath(pasta).Length;
+                if (tamanho > melhorTamanho) { melhorTamanho = tamanho; melhor = pasta; }
+            }
+            return melhor;
         }
 
         // Padrões usados para reconhecer que uma pasta de jogo contém um "save" local.
@@ -433,10 +571,19 @@ namespace BuscaDeJogosLocais
 
         // Nome de executável que não identifica jogo nenhum: casar só por ele apontaria
         // qualquer pasta do disco. Vale como sinal fraco, nunca como prova.
+        // Nome de executável que não identifica jogo nenhum: ou é palavra genérica, ou é o
+        // lançador de DRM/loja que vem IGUAL em centenas de jogos diferentes.
+        // "start_protected_game.exe" (Denuvo) e "gamelaunchhelper.exe" (Xbox/Microsoft Store)
+        // foram o caso real: a extensão dizia que "Sword Art Online Fractured Daydream" tinha
+        // virado "MARVEL Tokon Fighting Souls" só porque os dois têm o mesmo lançador. Nome de
+        // arquivo repetido no disco inteiro é coincidência de embalagem, não prova de que é a
+        // mesma instalação.
         public static readonly string[] GenericExeNames =
         {
             "game", "start", "launcher", "launch", "play", "run", "main", "app",
-            "client", "startup", "bin", "win64", "win32", "shipping"
+            "client", "startup", "bin", "win64", "win32", "shipping",
+            "start_protected_game", "gamelaunchhelper", "gamelauncher", "game_launcher",
+            "startgame", "start_game", "launcher64", "launcher_x64", "playgame"
         };
 
         // Executáveis que existem na pasta do jogo mas NÃO são o jogo. Propor um destes é o
@@ -466,6 +613,10 @@ namespace BuscaDeJogosLocais
             public string Confianca { get; set; }   // "Alta" | "Média"
             // A pasta candidata É a pasta que o jogo já tinha; só o executável mudou.
             public bool MesmaPasta { get; set; }
+            // A ÚNICA evidência é o nome do arquivo executável: nada no nome da pasta, na
+            // estrutura interna ou no tamanho corrobora. Quem chama descarta candidato assim,
+            // porque nome de exe repetido é o que fazia dois jogos distintos virarem o mesmo.
+            public bool SomenteNomeDoExe { get; set; }
             // True só quando a evidência é forte o bastante para a linha já nascer marcada.
             public bool Confiavel { get { return Pontos >= RelocationScoreAlta; } }
         }
@@ -628,18 +779,20 @@ namespace BuscaDeJogosLocais
                             nomeExeAntigo.Equals(nomeExeCandidato, StringComparison.OrdinalIgnoreCase);
             bool exeGenerico = IsGenericExeName(nomeExeAntigo);
 
+            int pontosExe = 0;
             if (exeIgual)
             {
                 if (exeGenerico)
                 {
-                    pontos += 15;
+                    pontosExe = 15;
                     motivos.Add("mesmo executável, mas de nome genérico");
                 }
                 else
                 {
-                    pontos += 35;
+                    pontosExe = 35;
                     motivos.Add("mesmo executável (" + nomeExeCandidato + ")");
                 }
+                pontos += pontosExe;
             }
 
             // --- 2. Tamanho do executável: é o sinal que distingue a MESMA cópia ---
@@ -711,6 +864,8 @@ namespace BuscaDeJogosLocais
 
             var m = new RelocationMatch();
             m.MesmaPasta = mesmaPasta;
+            // Nenhum outro sinal pontuou: o casamento se apoia só no nome do arquivo.
+            m.SomenteNomeDoExe = exeIgual && pontos == pontosExe;
             m.PastaCandidata = pastaCandidata;
             m.ExeCandidato = exeCandidato;
             m.Pontos = pontos;
@@ -734,6 +889,8 @@ namespace BuscaDeJogosLocais
             if (IsGenericExeName(exeAntigo)) return match;
 
             match.Pontos += 20;
+            // Ser único no disco É corroboração: deixa de ser "só o nome do arquivo".
+            match.SomenteNomeDoExe = false;
             match.Motivo = match.Motivo + " · esse executável só existe nessa pasta em todo o disco monitorado";
             match.Confianca = match.Pontos >= RelocationScoreAlta ? "Alta" : "Média";
             return match;

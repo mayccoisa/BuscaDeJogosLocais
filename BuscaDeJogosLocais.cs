@@ -21,6 +21,32 @@ namespace BuscaDeJogosLocais
         public override string Name { get { return "Local"; } }
         public override LibraryClient Client { get { return null; } }
 
+        /// <summary>
+        /// O ícone do "Local" no menu de bibliotecas, à esquerda. É CAMINHO EM DISCO, e não um
+        /// recurso embutido na DLL: o Playnite lê o arquivo direto, então ele precisa sair no
+        /// pacote (ver o library-icon.png nos dois .csproj).
+        ///
+        /// Sem o arquivo devolvemos null, e não um caminho que não existe: null o Playnite trata
+        /// como "use o padrão", e caminho quebrado vira linha sem ícone nenhum, sem erro no log.
+        /// </summary>
+        public override string LibraryIcon
+        {
+            get
+            {
+                try
+                {
+                    var pasta = Path.GetDirectoryName(
+                        System.Reflection.Assembly.GetExecutingAssembly().Location);
+                    var arquivo = Path.Combine(pasta, "library-icon.png");
+                    return File.Exists(arquivo) ? arquivo : null;
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+            }
+        }
+
         private BuscaDeJogosLocaisSettingsViewModel settings;
 
         public BuscaDeJogosLocais(IPlayniteAPI api) : base(api)
@@ -695,6 +721,13 @@ namespace BuscaDeJogosLocais
                     m = LocalGameUtils.ReforcarPorExclusividade(m, exeAntigoCompleto, pastasComEsseExe);
                 }
 
+                // Nome de executável igual, e SÓ isso, não é candidato — é homônimo. Dois jogos
+                // que compartilham o lançador ("start_protected_game.exe" do Denuvo,
+                // "gamelaunchhelper.exe" da Store) casavam aqui, e a tela oferecia reapontar um
+                // jogo para a pasta de outro. Quando o arquivo é único no disco monitorado a
+                // exclusividade já limpou esta marca, e o candidato continua valendo.
+                if (m.SomenteNomeDoExe) continue;
+
                 candidatos.Add(m);
             }
 
@@ -871,8 +904,79 @@ namespace BuscaDeJogosLocais
             return atualizados;
         }
 
+        /// <summary>
+        /// Abre uma pasta no Explorador, ou explica por que não deu.
+        ///
+        /// O Process.Start fica aqui e a decisão fica em LocalGameUtils, que é testável. Pasta
+        /// inacessível vira aviso com o motivo, e não uma janela de erro do Windows: o motivo
+        /// (HD desligado, letra trocada) é a informação que a pessoa precisa, e o Explorador não
+        /// tem como dá-la.
+        /// </summary>
+        public void AbrirPastaNoExplorador(string caminho)
+        {
+            string erro;
+            var alvo = LocalGameUtils.CaminhoParaAbrirNoExplorador(caminho, out erro);
+            if (alvo == null)
+            {
+                PlayniteApi.Dialogs.ShowMessage(erro, "Busca de Jogos Locais");
+                return;
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(alvo) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                logger.Warn(ex, "Não consegui abrir a pasta no Explorador.");
+                PlayniteApi.Dialogs.ShowMessage(
+                    string.Format("Não consegui abrir \"{0}\": {1}", alvo, ex.Message),
+                    "Busca de Jogos Locais");
+            }
+        }
+
         public override ISettings GetSettings(bool firstRun) { return settings; }
         public override UserControl GetSettingsView(bool firstRun) { return new BuscaDeJogosLocaisSettingsView(); }
+
+        /// <summary>
+        /// A entrada na barra lateral do modo Desktop, que abre a MESMA tela de sempre.
+        ///
+        /// Até aqui tudo o que a extensão faz morava em Complementos › Configuração, que é onde
+        /// ninguém procura uma ferramenta que se usa toda semana. A tela é a mesma e o view model
+        /// é o mesmo objeto — abrir uma segunda instância do view model faria as duas telas
+        /// discordarem sobre a lista de pastas, e a última a gravar apagaria a outra.
+        /// </summary>
+        public override IEnumerable<SidebarItem> GetSidebarItems()
+        {
+            yield return new SidebarItem
+            {
+                Title = "Jogos locais",
+                Type = SiderbarItemType.View,
+                // O mesmo desenho do ícone da biblioteca, aqui em vetor para acompanhar a cor e o
+                // tamanho do tema. Ver Ui/IconArt.
+                Icon = Ui.IconArt.Build(CorDoTema("TextBrush"), CorDoTema("GlyphBrush"), 20),
+                Opened = () => new BuscaDeJogosLocaisSettingsView(settings)
+            };
+        }
+
+        /// <summary>
+        /// Um pincel do tema em uso, com reserva.
+        ///
+        /// Sem a reserva o Fill fica nulo e o ícone SOME sem erro nenhum: a barra lateral mostra um
+        /// espaço em branco clicável, e não há nada no log para investigar. Branco é feio num tema
+        /// claro, mas visível — e visível ganha de invisível.
+        /// </summary>
+        private System.Windows.Media.Brush CorDoTema(string chave)
+        {
+            try
+            {
+                var pincel = PlayniteApi.Resources.GetResource(chave) as System.Windows.Media.Brush;
+                if (pincel != null) return pincel;
+            }
+            catch (Exception) { }
+
+            return System.Windows.Media.Brushes.White;
+        }
         public override IEnumerable<GameMetadata> GetGames(LibraryGetGamesArgs args) { return new List<GameMetadata>(); }
 
         public override IEnumerable<PlayController> GetPlayActions(GetPlayActionsArgs args)
@@ -1297,6 +1401,370 @@ namespace BuscaDeJogosLocais
             }
 
             return itens.OrderBy(i => i.BibliotecaNova).ThenBy(i => i.NomeJogo).ToList();
+        }
+
+        // ------------------------------------------------------------------ emuladores
+
+        /// <summary>
+        /// Uma linha por emulador configurado, com versão, ícone e o que há nas pastas que ele
+        /// varre — quanto já virou biblioteca e quanto ficou de fora.
+        ///
+        /// As pastas saem de <c>Database.GameScanners</c>, e não do InstallDir do emulador: o que
+        /// o Playnite varre é o que está configurado em Bibliotecas › Emulação › pastas de
+        /// varredura, e é contra ISSO que "está na biblioteca?" faz sentido. A pasta onde o
+        /// emulador está instalado quase nunca é a pasta das ROMs, e usá-la produziria uma tela
+        /// que diz "0 jogos" para quem tem mil.
+        ///
+        /// Emulador sem pasta de varredura entra na lista mesmo assim, com a situação dizendo
+        /// isso. Sumir da tela faria parecer que o Playnite não conhece o emulador, que é outro
+        /// problema e leva a pessoa a reconfigurar o que já estava certo.
+        /// </summary>
+        public List<EmuladorResumo> MapearEmuladores()
+        {
+            var resumos = new List<EmuladorResumo>();
+
+            List<Emulator> emuladores;
+            List<GameScannerConfig> varreduras;
+            try
+            {
+                emuladores = PlayniteApi.Database.Emulators.ToList();
+                varreduras = PlayniteApi.Database.GameScanners.ToList();
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Não consegui ler os emuladores configurados.");
+                return resumos;
+            }
+
+            var mapeadas = RomsJaNaBiblioteca();
+
+            foreach (var emulador in emuladores)
+            {
+                var resumo = new EmuladorResumo();
+                resumo.EmuladorId = emulador.Id;
+                resumo.Nome = string.IsNullOrWhiteSpace(emulador.Name) ? "(sem nome)" : emulador.Name;
+                resumo.InstallDir = emulador.InstallDir;
+                resumo.Itens = new List<EmuladorJogoItem>();
+
+                var executavel = ExecutavelDoEmulador(emulador);
+                resumo.Executavel = string.IsNullOrEmpty(executavel) ? "—" : executavel;
+                resumo.ExecutavelExiste = !string.IsNullOrEmpty(executavel) && File.Exists(executavel);
+                resumo.Versao = resumo.ExecutavelExiste ? VersaoDoExecutavel(executavel) : "—";
+                resumo.Icone = resumo.ExecutavelExiste ? IconeDoExecutavel(executavel) : null;
+                resumo.Plataformas = PlataformasDoEmulador(emulador);
+
+                var pastas = new List<string>();
+                foreach (var varredura in varreduras)
+                {
+                    if (varredura.EmulatorId != emulador.Id) continue;
+                    if (string.IsNullOrWhiteSpace(varredura.Directory)) continue;
+
+                    pastas.Add(varredura.Directory);
+                    LerPastaDeVarredura(emulador, varredura, mapeadas, resumo);
+                }
+
+                resumo.TotalPastas = pastas.Count;
+                resumo.Pastas = pastas.Count == 0 ? "—" : string.Join(" · ", pastas.ToArray());
+                resumo.PrimeiraPasta = pastas.Count == 0 ? null : pastas[0];
+                resumo.TotalArquivos = resumo.Itens.Count;
+                resumo.NaBiblioteca = resumo.Itens.Count(i => i.GameId != Guid.Empty);
+                resumo.ForaDaBiblioteca = resumo.TotalArquivos - resumo.NaBiblioteca;
+                resumo.Itens = resumo.Itens.OrderBy(i => i.Status).ThenBy(i => i.Nome).ToList();
+
+                resumos.Add(resumo);
+            }
+
+            return resumos.OrderBy(r => r.Nome).ToList();
+        }
+
+        /// <summary>
+        /// Todo caminho de ROM que a biblioteca já conhece, normalizado, apontando para o jogo.
+        ///
+        /// O caminho guardado pode ser RELATIVO quando a varredura foi importada com
+        /// "caminhos relativos" ligado — ele chega como "{InstallDir}\jogo.iso". Comparar essa
+        /// string com o caminho lido do disco nunca casa, e o efeito seria a tela dizer que a
+        /// biblioteca inteira está fora dela. Por isso tudo passa por ExpandGameVariables antes.
+        /// </summary>
+        private Dictionary<string, Game> RomsJaNaBiblioteca()
+        {
+            var mapa = new Dictionary<string, Game>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var game in PlayniteApi.Database.Games.ToList())
+            {
+                if (game.Roms == null || game.Roms.Count == 0) continue;
+
+                foreach (var rom in game.Roms)
+                {
+                    if (rom == null || string.IsNullOrWhiteSpace(rom.Path)) continue;
+
+                    string caminho;
+                    try
+                    {
+                        caminho = PlayniteApi.ExpandGameVariables(game, rom.Path);
+                    }
+                    catch (Exception)
+                    {
+                        caminho = rom.Path;
+                    }
+
+                    var chave = LocalGameUtils.NormalizePath(caminho);
+                    if (string.IsNullOrEmpty(chave)) continue;
+                    if (!mapa.ContainsKey(chave)) mapa[chave] = game;
+                }
+            }
+
+            return mapa;
+        }
+
+        /// <summary>Lê uma pasta de varredura e joga o que achou dentro do resumo do emulador.</summary>
+        private void LerPastaDeVarredura(Emulator emulador, GameScannerConfig varredura,
+                                         Dictionary<string, Game> mapeadas, EmuladorResumo resumo)
+        {
+            if (!Directory.Exists(varredura.Directory)) return;
+
+            var extensoes = ExtensoesDoPerfil(emulador, varredura.EmulatorProfileId);
+            var plataforma = PlataformaDaVarredura(varredura);
+
+            IEnumerable<string> arquivos;
+            try
+            {
+                arquivos = Directory.EnumerateFiles(
+                    varredura.Directory, "*",
+                    varredura.ScanSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
+            }
+            catch (Exception ex)
+            {
+                // Pasta sem permissão, ou HD que desligou no meio: o emulador continua na lista
+                // com o que já foi lido, em vez de a tela inteira morrer por causa de uma pasta.
+                logger.Warn(ex, string.Format("Não consegui ler a pasta de varredura {0}.", varredura.Directory));
+                return;
+            }
+
+            foreach (var arquivo in arquivos)
+            {
+                if (!LocalGameUtils.EhArquivoDeRom(arquivo, extensoes)) continue;
+
+                var chave = LocalGameUtils.NormalizePath(arquivo);
+                Game jogo = null;
+                mapeadas.TryGetValue(chave, out jogo);
+
+                var item = new EmuladorJogoItem();
+                item.GameId = jogo != null ? jogo.Id : Guid.Empty;
+                item.Nome = jogo != null ? jogo.Name : LocalGameUtils.NomeDeRomParaExibicao(arquivo);
+                item.Arquivo = Path.GetFileName(arquivo);
+                item.Caminho = arquivo;
+                item.Pasta = varredura.Directory;
+                item.Plataforma = plataforma;
+                item.Status = jogo != null ? "Na biblioteca" : "Fora da biblioteca";
+
+                resumo.Itens.Add(item);
+            }
+        }
+
+        /// <summary>
+        /// O executável do emulador. Perfil personalizado guarda o caminho; perfil embutido só
+        /// guarda o nome, e o executável mora na definição que o Playnite distribui.
+        ///
+        /// O caminho pode ser relativo ao InstallDir, e frequentemente é.
+        /// </summary>
+        private string ExecutavelDoEmulador(Emulator emulador)
+        {
+            if (emulador == null) return null;
+
+            string relativo = null;
+
+            if (emulador.CustomProfiles != null)
+            {
+                foreach (var perfil in emulador.CustomProfiles)
+                {
+                    if (perfil == null || string.IsNullOrWhiteSpace(perfil.Executable)) continue;
+                    relativo = perfil.Executable;
+                    break;
+                }
+            }
+
+            if (relativo == null && emulador.BuiltinProfiles != null && !string.IsNullOrEmpty(emulador.BuiltInConfigId))
+            {
+                EmulatorDefinition definicao = null;
+                foreach (var d in PlayniteApi.Emulation.Emulators)
+                {
+                    if (string.Equals(d.Id, emulador.BuiltInConfigId, StringComparison.OrdinalIgnoreCase)) { definicao = d; break; }
+                }
+
+                if (definicao != null && definicao.Profiles != null)
+                {
+                    foreach (var perfil in definicao.Profiles)
+                    {
+                        if (perfil == null || string.IsNullOrWhiteSpace(perfil.StartupExecutable)) continue;
+                        relativo = perfil.StartupExecutable;
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(relativo)) return null;
+
+            // A definição embutida às vezes traz curinga ("*.exe", "pcsx2-qt*.exe"): o nome do
+            // binário muda a cada versão do emulador, e é exatamente por isso que o curinga está
+            // lá. Resolver pelo disco é a única leitura honesta.
+            try
+            {
+                if (relativo.IndexOf('*') >= 0 || relativo.IndexOf('?') >= 0)
+                {
+                    if (string.IsNullOrWhiteSpace(emulador.InstallDir) || !Directory.Exists(emulador.InstallDir)) return null;
+                    var achados = Directory.GetFiles(emulador.InstallDir, relativo, SearchOption.TopDirectoryOnly);
+                    return achados.Length > 0 ? achados[0] : null;
+                }
+
+                if (Path.IsPathRooted(relativo)) return relativo;
+                if (string.IsNullOrWhiteSpace(emulador.InstallDir)) return null;
+                return Path.Combine(emulador.InstallDir, relativo);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// A versão do emulador, lida do próprio executável.
+        ///
+        /// Prefere o ProductVersion: emulador costuma escrever ali a versão que ele mostra na
+        /// própria tela ("2.4.0-dev"), enquanto o FileVersion fica num "1.0.0.0" de build. Quando
+        /// nenhum dos dois diz nada, devolve travessão — inventar versão faria a coluna perder a
+        /// credibilidade justo onde ela precisa ser confiável.
+        /// </summary>
+        private string VersaoDoExecutavel(string caminho)
+        {
+            try
+            {
+                var info = FileVersionInfo.GetVersionInfo(caminho);
+                if (info != null && !string.IsNullOrWhiteSpace(info.ProductVersion)) return info.ProductVersion.Trim();
+                if (info != null && !string.IsNullOrWhiteSpace(info.FileVersion)) return info.FileVersion.Trim();
+            }
+            catch (Exception ex)
+            {
+                logger.Warn(ex, string.Format("Não consegui ler a versão de {0}.", caminho));
+            }
+
+            return "—";
+        }
+
+        /// <summary>
+        /// O ícone do emulador, extraído do executável dele. O Playnite não distribui ícone de
+        /// emulador nenhum (as definições em Emulation/Emulators só têm o emulator.yaml), então
+        /// o binário é a única fonte.
+        ///
+        /// A imagem é CONGELADA porque quem a desenha é a thread de UI e quem a cria pode não ser.
+        /// </summary>
+        private System.Windows.Media.Imaging.BitmapSource IconeDoExecutavel(string caminho)
+        {
+            System.Drawing.Icon icone = null;
+            try
+            {
+                icone = System.Drawing.Icon.ExtractAssociatedIcon(caminho);
+                if (icone == null) return null;
+
+                var imagem = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
+                    icone.Handle,
+                    System.Windows.Int32Rect.Empty,
+                    System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+
+                imagem.Freeze();
+                return imagem;
+            }
+            catch (Exception)
+            {
+                // Executável sem ícone, ou num formato que o Windows não lê: a linha fica sem
+                // ícone e o resto da tabela continua de pé.
+                return null;
+            }
+            finally
+            {
+                if (icone != null) icone.Dispose();
+            }
+        }
+
+        /// <summary>Os consoles que o emulador atende, juntando o que todos os perfis dele declaram.</summary>
+        private string PlataformasDoEmulador(Emulator emulador)
+        {
+            var nomes = new List<string>();
+
+            if (emulador.CustomProfiles != null)
+            {
+                foreach (var perfil in emulador.CustomProfiles)
+                {
+                    string ignorado;
+                    foreach (var nome in ResolverPlataformasDoPerfil(emulador, perfil.Id, out ignorado))
+                    {
+                        if (!nomes.Contains(nome)) nomes.Add(nome);
+                    }
+                }
+            }
+
+            if (emulador.BuiltinProfiles != null)
+            {
+                foreach (var perfil in emulador.BuiltinProfiles)
+                {
+                    string ignorado;
+                    foreach (var nome in ResolverPlataformasDoPerfil(emulador, perfil.Id, out ignorado))
+                    {
+                        if (!nomes.Contains(nome)) nomes.Add(nome);
+                    }
+                }
+            }
+
+            return nomes.Count == 0 ? "—" : string.Join(", ", nomes.ToArray());
+        }
+
+        /// <summary>As extensões de ROM que o perfil usado por esta varredura declara.</summary>
+        private List<string> ExtensoesDoPerfil(Emulator emulador, string profileId)
+        {
+            var extensoes = new List<string>();
+            if (emulador == null || string.IsNullOrEmpty(profileId)) return extensoes;
+
+            if (emulador.CustomProfiles != null)
+            {
+                foreach (var perfil in emulador.CustomProfiles)
+                {
+                    if (perfil.Id != profileId) continue;
+                    if (perfil.ImageExtensions != null) extensoes.AddRange(perfil.ImageExtensions);
+                    return extensoes;
+                }
+            }
+
+            if (emulador.BuiltinProfiles == null || string.IsNullOrEmpty(emulador.BuiltInConfigId)) return extensoes;
+
+            foreach (var perfil in emulador.BuiltinProfiles)
+            {
+                if (perfil.Id != profileId) continue;
+
+                EmulatorDefinition definicao = null;
+                foreach (var d in PlayniteApi.Emulation.Emulators)
+                {
+                    if (string.Equals(d.Id, emulador.BuiltInConfigId, StringComparison.OrdinalIgnoreCase)) { definicao = d; break; }
+                }
+                if (definicao == null || definicao.Profiles == null) return extensoes;
+
+                foreach (var dp in definicao.Profiles)
+                {
+                    if (!string.Equals(dp.Name, perfil.BuiltInProfileName, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (dp.ImageExtensions != null) extensoes.AddRange(dp.ImageExtensions);
+                    return extensoes;
+                }
+
+                return extensoes;
+            }
+
+            return extensoes;
+        }
+
+        /// <summary>O console que a varredura força, quando ela força algum.</summary>
+        private string PlataformaDaVarredura(GameScannerConfig varredura)
+        {
+            if (varredura.OverridePlatformId == Guid.Empty) return "—";
+            var plataforma = PlayniteApi.Database.Platforms.Get(varredura.OverridePlatformId);
+            return plataforma != null && !string.IsNullOrEmpty(plataforma.Name) ? plataforma.Name : "—";
         }
 
         /// <summary>

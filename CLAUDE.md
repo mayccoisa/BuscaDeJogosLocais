@@ -8,7 +8,7 @@ Extensão Playnite em C# + WPF (.NET Framework 4.7.2). Plugin do tipo `LibraryPl
 
 - **Linguagem**: C# com sintaxe máxima **C# 5** (sem `?.`, sem `=>` expression body, sem string interpolation `$""`, sem `nameof`). O compilador usado é `MSBuild 4.0` (`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\MSBuild.exe`).
 - **UI**: WPF/XAML com data binding. **Todo estilo e toda cor vivem em `Ui/Theme.xaml`** — o mesmo dicionário da extensão Playnite Hub, herdado do BAML da tela de configurações do Aniki Helper. Cada tela mergeia o dicionário por `pack://application:,,,/BuscaDeJogosLocais;component/Ui/Theme.xaml` e usa as chaves (`Card`, `PrimaryButton`, `ThemedDataGrid`, `StatusPill`, `PageTitle`…). **Não escreva cor literal em tela**: a única exceção é a cor semântica de status, que sai do `StatusToBrushConverter`. Antes da 0.9.0 havia `#11FFFFFF`, `Gold`, `LightGreen` e `OrangeRed` espalhados por 726 linhas de um XAML só, e mudar o visual virou caçada por literal.
-- **Uma aba, um arquivo**: a tela de configurações é um shell (`BuscaDeJogosLocaisSettingsView.xaml`) com uma página por aba em `Ui/` (`InicioPage`, `BuscaPage`, `PastasPage`, `ReparoPage`, `DuplicadosPage`, `HistoricoPage`, `AjustesPage`, `AtualizacoesPage`). Os code-behinds são vazios de propósito: regra que vive em página não é testável. **Configuração e tabela não dividem a mesma aba** — foi assim que as opções cresceram até deixar a tabela de pastas com zero pixel.
+- **Uma aba, um arquivo**: a tela de configurações é um shell (`BuscaDeJogosLocaisSettingsView.xaml`) com uma página por aba em `Ui/` (`InicioPage`, `BuscaPage`, `PastasPage`, `EmuladoresPage`, `ReparoPage`, `DuplicadosPage`, `HistoricoPage`, `AjustesPage`, `AtualizacoesPage`). Os code-behinds são vazios de propósito: regra que vive em página não é testável. **Configuração e tabela não dividem a mesma aba** — foi assim que as opções cresceram até deixar a tabela de pastas com zero pixel.
 - **Verificar XAML antes de instalar**: `StaticResource` com chave inexistente compila e só estoura quando a tela abre. Ao mexer em XAML, cheque as chaves contra o `Theme.xaml` e carregue as telas por reflexão em thread STA (`powershell.exe -STA`, ver seção 4b da skill `desenvolvimento-playnite`).
 - **Build**: Sempre usar `BuscaDeJogosLocais.Local.csproj` para builds locais (referencia as DLLs de `D:\Playnite\`). O `BuscaDeJogosLocais.csproj` (referenciado pela `.sln`) usa NuGet e é o que a CI compila — **não** apague nem dessincronize os dois.
 - **Deploy**: Executar `.\deploy.ps1` para compilar e copiar para a pasta de extensões do Playnite (`D:\Playnite\Extensions\...`).
@@ -76,6 +76,10 @@ git push origin vX.Y.Z
 | `ScanResultWindow.xaml` | Janela standalone de resultados de scan (usada pelo menu e scan automático) |
 | `IntegrityResultView.xaml` | Janela de resultado da verificação de integridade |
 | `ConsoleLibraryWindow.xaml` | Prévia de "Completar Biblioteca": console (Fonte) de cada jogo de emulação, lido do emulador que o jogo referencia |
+| `Ui/EmuladoresPage.xaml` | Aba "Emuladores": um emulador por linha, com versão, ícone e quanto das pastas de varredura já virou biblioteca |
+| `EmulatorGamesWindow.xaml` | Os arquivos de um emulador, um por linha, separando o que está na biblioteca do que ficou de fora. Gêmea da `FolderGamesWindow` |
+| `Ui/IconArt.cs` | O desenho da extensão (pasta com controle). Um lugar só, porque serve o vetor da barra lateral **e** o PNG do menu de bibliotecas |
+| `library-icon.png` | O ícone do `LibraryIcon`, gerado a partir do `IconArt`. **Outro arquivo que o `icon.png`**, que é a linha na lista de complementos |
 | `tests/RegressionTests.cs` | Testes de regressão da lógica de `LocalGameUtils` (assertions próprias) |
 | `tests/run-tests.ps1` | Compila (csc.exe) e executa os testes — sem NuGet/SDK |
 | `.github/workflows/release.yml` | CI que empacota o `.pext` e publica o GitHub Release no push de tag `v*` |

@@ -37,13 +37,39 @@
             </StackPanel>
         </StackPanel>
 
+        <!-- Duas linhas: o filtro por pasta ao lado do botão comprimia o texto de ajuda até
+             ele virar uma coluna de duas palavras. -->
         <Border Grid.Row="1" Style="{StaticResource Card}" Padding="14,12">
-            <StackPanel Orientation="Horizontal">
-                <Button Style="{StaticResource PrimaryButton}" Margin="0,0,16,0" VerticalAlignment="Center"
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Row="0" Grid.Column="0" Style="{StaticResource PrimaryButton}"
+                        Margin="0,0,16,0" VerticalAlignment="Center"
                         Content="Procurar no disco" Command="{Binding SearchLostGamesCommand}" />
-                <TextBlock Style="{StaticResource StatusLabel}" MaxWidth="620"
+
+                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
+                    <TextBlock Style="{StaticResource StatusLabel}" Text="Pasta:" Margin="0,0,8,0"
+                               VerticalAlignment="Center" />
+                    <!-- Filtra a lista pela pasta monitorada de onde o jogo saiu, e tem a opção
+                         "Fora das pastas monitoradas": jogo que estava fora aparece como não
+                         encontrado porque a busca nem olhou para lá. -->
+                    <ComboBox ItemsSource="{Binding OpcoesPastasReparo}" SelectedValue="{Binding FiltroPastaReparo}"
+                              Width="280" VerticalAlignment="Center"
+                              ToolTip="Mostra só os jogos cujo caminho antigo está nesta pasta monitorada." />
+                </StackPanel>
+
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource StatusLabel}"
+                           Margin="0,10,0,0" TextWrapping="Wrap"
                            Text="Só entra na lista o que está faltando de verdade. Pasta que apenas mudou de lugar aparece como &quot;Mudou de pasta&quot; e já vem marcada; o que ficou em &quot;Provável&quot; pede sua conferência antes." />
-            </StackPanel>
+            </Grid>
         </Border>
 
         <DataGrid Grid.Row="2" Style="{StaticResource ThemedDataGrid}"
@@ -118,8 +144,15 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Style="{StaticResource MutedText}" VerticalAlignment="Center" Margin="0,0,16,0"
-                           Text="Antes de desinstalar, confira se a pasta atual do jogo é uma das monitoradas — o que não é vigiado não tem como ser encontrado." />
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap"
+                               Text="Antes de desinstalar, confira se a pasta atual do jogo é uma das monitoradas — o que não é vigiado não tem como ser encontrado." />
+                    <!-- Com filtro ligado, as ações valem só para o que está visível. Dizer isso
+                         aqui é o que evita a pessoa achar que marcou a lista inteira. -->
+                    <TextBlock Style="{StaticResource StatusLabel}" Margin="0,4,0,0" TextWrapping="Wrap"
+                               Text="{Binding ReparoResumoTexto}"
+                               Visibility="{Binding ReparoResumoTexto, Converter={StaticResource FilledToVisible}}" />
+                </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <Button Style="{StaticResource GhostButton}" Margin="0,0,8,0"

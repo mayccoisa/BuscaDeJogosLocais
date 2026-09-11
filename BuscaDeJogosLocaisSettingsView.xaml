@@ -42,6 +42,12 @@
                 <ui:PastasPage />
             </TabItem>
 
+            <!-- Vem logo depois de "Pastas monitoradas" de propósito: é a mesma pergunta, do lado
+                 da emulação. -->
+            <TabItem Header="Emuladores">
+                <ui:EmuladoresPage />
+            </TabItem>
+
             <TabItem Header="Jogos que sumiram">
                 <ui:ReparoPage />
             </TabItem>

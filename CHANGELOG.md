@@ -6,6 +6,29 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.10.0] - 2026-09-10
+
+### Adicionado
+- **A extensão virou uma entrada no menu da esquerda, no modo Desktop.** Chama-se **Jogos locais** e abre a mesma tela de sempre, com todas as abas. Até aqui tudo o que ela faz morava em Complementos › Configuração, que é onde ninguém procura uma ferramenta que se usa toda semana. É a mesma tela e o mesmo estado: abrir pela barra ou pelas configurações dá no mesmo, e mexer num lugar aparece no outro.
+- **A biblioteca "Local" ganhou ícone próprio**: uma pasta com um controle dentro, que passa a aparecer ao lado do nome no menu de bibliotecas. O mesmo desenho serve os dois lugares — em PNG no menu de bibliotecas e em vetor na barra lateral, onde acompanha a cor e o tamanho do tema em uso.
+- **Botão "Abrir pasta" nas pastas monitoradas**, na própria linha da tabela e também dentro de "Ver jogos". Pasta que não abre agora diz **por quê** ("HD desligado ou letra de disco trocada"), em vez de deixar o Explorador abrir uma janela de erro do Windows — o motivo é a informação que interessa, e o Explorador não tem como dá-la.
+- **Aba "Emuladores"**, a gêmea de "Pastas monitoradas" do lado da emulação. Uma linha por emulador configurado no Playnite, com:
+  - o **ícone** do emulador, lido do executável dele (o Playnite não distribui ícone de emulador nenhum, então o binário é a única fonte);
+  - a **versão**, lida do próprio executável — o `ProductVersion`, que é onde o emulador costuma escrever a versão que mostra na tela dele;
+  - os **consoles** que ele atende, vindos da definição do emulador e não de um mapa inventado aqui;
+  - quantos arquivos das pastas que ele varre **já estão na biblioteca** e quantos **ficaram de fora**.
+
+  Em "Ver jogos" sai a lista arquivo por arquivo, com a caixa "mostrar só o que ficou de fora" — igual à da tela de pastas monitoradas.
+
+### Detalhes que valem saber
+- **As pastas lidas são as de varredura do Playnite** (Biblioteca › Configurar emuladores › pastas de varredura automática), e não a pasta onde o emulador está instalado. É contra o que o Playnite varre que a pergunta "está na biblioteca?" faz sentido; a pasta de instalação do emulador quase nunca é a pasta das ROMs, e usá-la produziria uma tela dizendo "0 jogos" para quem tem mil.
+- **Emulador sem pasta de varredura aparece assim mesmo**, com a situação dizendo isso. Sumir da lista faria parecer que o Playnite não conhece o emulador — outro problema, que levaria você a reconfigurar o que já estava certo.
+- **O que conta como ROM é o que o perfil do emulador declara.** Quando ele não declara nada, vale tudo menos o lixo conhecido (save, capa, `.txt`, o próprio `.exe`). Uma lista de formatos permitidos escrita por mim erraria em todo console que eu não conheço.
+- **A leitura é sob demanda, pelo botão "Atualizar".** Ela varre as pastas de ROM inteiras; numa coleção grande são dezenas de milhares de arquivos, e fazer isso ao abrir a tela travaria a janela na cara de quem entrou por outro motivo.
+- **Caminho de ROM guardado como relativo é resolvido antes de comparar.** Varredura importada com "caminhos relativos" ligado guarda `{InstallDir}\jogo.iso`; comparar essa string com o caminho lido do disco nunca casaria, e a tela diria que a biblioteca inteira está fora dela.
+
+---
+
 ## [0.9.1] - 2026-08-25
 
 ### Corrigido
