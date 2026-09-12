@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
@@ -66,7 +66,12 @@ namespace BuscaDeJogosLocais
                            "então não há como saber o que dele está ou não na biblioteca.";
                 }
 
-                return "Pastas varridas: " + resumo.Pastas;
+                var texto = "Pastas varridas: " + resumo.Pastas;
+                if (!resumo.ExecutavelExiste)
+                    texto += "\nExecutável do emulador não encontrado" +
+                             (string.IsNullOrEmpty(resumo.InstallDir) ? " (pasta de instalação vazia no Playnite)." : " em " + resumo.InstallDir + ". Veja o playnite.log, linhas [Emulador].");
+                if (!string.IsNullOrEmpty(resumo.Observacao)) texto += "\n" + resumo.Observacao;
+                return texto;
             }
         }
 

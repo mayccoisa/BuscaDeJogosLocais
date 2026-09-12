@@ -1,9 +1,10 @@
-using Playnite.SDK;
+﻿using Playnite.SDK;
 using Playnite.SDK.Data;
 using Playnite.SDK.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -185,7 +186,72 @@ namespace BuscaDeJogosLocais
         public string NomePasta { get; set; }
         public string Caminho { get; set; }
         public string Versao { get; set; }
-        public string Status { get; set; }      // "Na biblioteca", "Não importado", "Pasta ausente", "Ignorado"
+
+        // "Na biblioteca", "Não importado", "Pasta ausente", "Ignorado" — e "Desinstalado"
+        // depois que a pessoa age sobre um "Pasta ausente" na janela da pasta.
+        private string status;
+        public string Status
+        {
+            get { return status; }
+            set { SetValue(ref status, value); OnPropertyChanged("PodeSelecionar"); }
+        }
+
+        // Só o jogo cuja pasta sumiu aceita ação na janela da pasta: marcar como desinstalado ou
+        // tirar da biblioteca. O resto da lista não tem o que fazer ali.
+        public bool PodeSelecionar { get { return Status == "Pasta ausente"; } }
+
+        private bool selecionado;
+        public bool Selecionado
+        {
+            get { return selecionado; }
+            set { SetValue(ref selecionado, value); }
+        }
+
+        // Diagnóstico: POR QUE a pasta está nesta situação, e o que dá para fazer daqui.
+        // "Não importado" sozinho não dizia nada — a busca podia ter reconhecido a pasta e
+        // mesmo assim ela ficava de fora, e a pessoa não tinha como saber o motivo.
+        private string motivo;
+        public string Motivo
+        {
+            get { return motivo; }
+            set { SetValue(ref motivo, value); }
+        }
+
+        // "importar" | "adotar" | "reapontar" | "" (nada a fazer daqui)
+        private string acao;
+        public string Acao
+        {
+            get { return acao; }
+            set { SetValue(ref acao, value); OnPropertyChanged("AcaoTexto"); OnPropertyChanged("TemAcao"); }
+        }
+
+        public bool TemAcao { get { return !string.IsNullOrEmpty(Acao); } }
+
+        public string AcaoTexto
+        {
+            get
+            {
+                switch (Acao ?? string.Empty)
+                {
+                    case "importar": return "Importar";
+                    case "adotar": return "Trazer para esta extensão";
+                    case "reapontar": return "Reapontar para cá";
+                    default: return string.Empty;
+                }
+            }
+        }
+
+        public string Exe { get; set; }                 // executável escolhido para importar/reapontar
+        public Guid JogoRelacionadoId { get; set; }     // jogo já existente que a ação vai tocar
+    }
+
+    // O que o plugin descobriu sobre uma subpasta que ficou fora da biblioteca.
+    public class DiagnosticoPasta
+    {
+        public string Motivo { get; set; }
+        public string Acao { get; set; }
+        public string Exe { get; set; }
+        public Guid JogoRelacionadoId { get; set; }
     }
 
     // Resumo de uma pasta monitorada: quanto dela virou biblioteca e quanto ficou de fora.
@@ -243,6 +309,10 @@ namespace BuscaDeJogosLocais
         public int TotalArquivos { get; set; }
         public int NaBiblioteca { get; set; }
         public int ForaDaBiblioteca { get; set; }
+
+        // Aviso sobre como a leitura foi feita (ex.: perfil que importa por script). Vazio
+        // quando não há nada de especial a dizer.
+        public string Observacao { get; set; }
 
         // O ícone do próprio executável do emulador. Fica como object para este arquivo não
         // precisar de System.Drawing nem de WPF no tipo — quem preenche é o plugin.
@@ -504,6 +574,7 @@ namespace BuscaDeJogosLocais
 
     public class BuscaDeJogosLocaisSettingsViewModel : ObservableObject, ISettings
     {
+        private static readonly ILogger logger = LogManager.GetLogger();
         private readonly BuscaDeJogosLocais plugin;
         private BuscaDeJogosLocaisSettings editingClone { get; set; }
         private BuscaDeJogosLocaisSettings settings;
@@ -1116,8 +1187,11 @@ namespace BuscaDeJogosLocais
                 window.Width = 950;
                 window.Height = 600;
                 window.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
-                window.Content = new FolderGamesWindow(resumo, plugin);
+                var tela = new FolderGamesWindow(resumo, plugin);
+                window.Content = tela;
                 window.ShowDialog();
+                // Jogo desinstalado ou removido lá dentro muda a contagem desta tabela.
+                if (tela.HouveMudanca) RecalcularEstatisticas();
             });
 
             // Abre a pasta no Explorador. Aceita o PastaResumo da linha ou o caminho cru, porque
@@ -1722,9 +1796,119 @@ namespace BuscaDeJogosLocais
             PastasEstatisticas = builder.ToString();
         }
 
-        public void BeginEdit() { editingClone = Serialization.GetClone(Settings); RecalcularEstatisticas(); CarregarJogosDaBiblioteca(); OnPropertyChanged("OpcoesPastas"); }
-        public void CancelEdit() { Settings = editingClone; }
-        public void EndEdit() { plugin.SavePluginSettings(Settings); plugin.UpdateWatchers(); }
+        // O que a tela precisa ter carregado ao abrir, seja pela janela de configurações ou
+        // pela barra lateral. Vivia dentro de BeginEdit, que só o Playnite chama, e só quando
+        // abre a janela: a barra lateral abria a mesma tela com a tabela de pastas vazia e a
+        // lista de jogos zerada, como se a extensão tivesse perdido tudo.
+        public void CarregarTela()
+        {
+            RecalcularEstatisticas();
+            CarregarJogosDaBiblioteca();
+            OnPropertyChanged("OpcoesPastas");
+        }
+
+        public void BeginEdit()
+        {
+            editandoPelaJanela = true;
+            editingClone = Serialization.GetClone(Settings);
+            CarregarTela();
+        }
+
+        public void CancelEdit()
+        {
+            Settings = editingClone;
+            editandoPelaJanela = false;
+            // A janela trocou o objeto de configurações; a barra lateral (se estiver aberta)
+            // precisa passar a observar o novo.
+            ObservarSettingsParaSalvar();
+        }
+
+        public void EndEdit()
+        {
+            editandoPelaJanela = false;
+            plugin.SavePluginSettings(Settings);
+            plugin.UpdateWatchers();
+        }
+
+        // ---- barra lateral --------------------------------------------------------------
+
+        // Verdadeiro entre BeginEdit e EndEdit/CancelEdit. Enquanto a janela está aberta, quem
+        // decide se a mudança fica é o botão OK dela; gravar a cada clique tornaria o Cancelar
+        // inútil.
+        private bool editandoPelaJanela;
+        private BuscaDeJogosLocaisSettings settingsObservado;
+
+        /// <summary>
+        /// Prepara o view model para a tela aberta pela barra lateral: carrega o que a janela
+        /// carregaria e passa a gravar cada mudança na hora.
+        ///
+        /// Na barra lateral não existe OK nem Cancelar, então ninguém chama EndEdit. Sem isto,
+        /// pasta adicionada ou opção marcada ali durava até fechar o Playnite e sumia — e a
+        /// vigilância de pastas nunca ficava sabendo da pasta nova.
+        /// </summary>
+        public void AbrirPelaBarraLateral()
+        {
+            CarregarTela();
+            ObservarSettingsParaSalvar();
+        }
+
+        private void ObservarSettingsParaSalvar()
+        {
+            if (ReferenceEquals(settingsObservado, Settings)) return;
+
+            if (settingsObservado != null)
+            {
+                settingsObservado.PropertyChanged -= AoMudarSettings;
+                ObservarColecao(settingsObservado.Pastas, false);
+                ObservarColecao(settingsObservado.CaminhosIgnorados, false);
+                ObservarColecao(settingsObservado.PadroesSave, false);
+            }
+
+            settingsObservado = Settings;
+            if (settingsObservado == null) return;
+
+            settingsObservado.PropertyChanged += AoMudarSettings;
+            ObservarColecao(settingsObservado.Pastas, true);
+            ObservarColecao(settingsObservado.CaminhosIgnorados, true);
+            ObservarColecao(settingsObservado.PadroesSave, true);
+        }
+
+        private void ObservarColecao(INotifyCollectionChanged colecao, bool ligar)
+        {
+            if (colecao == null) return;
+            if (ligar) colecao.CollectionChanged += AoMudarColecao;
+            else colecao.CollectionChanged -= AoMudarColecao;
+        }
+
+        private void AoMudarSettings(object sender, PropertyChangedEventArgs e)
+        {
+            // Lista trocada inteira (ex.: Pastas = new ...): reengancha nas novas instâncias.
+            if (e.PropertyName == "Pastas" || e.PropertyName == "CaminhosIgnorados" || e.PropertyName == "PadroesSave")
+            {
+                settingsObservado = null;
+                ObservarSettingsParaSalvar();
+            }
+            SalvarSeForaDaJanela();
+        }
+
+        private void AoMudarColecao(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            SalvarSeForaDaJanela();
+        }
+
+        private void SalvarSeForaDaJanela()
+        {
+            if (editandoPelaJanela) return;
+            try
+            {
+                plugin.SavePluginSettings(Settings);
+                plugin.UpdateWatchers();
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Falha ao gravar as configurações mudadas pela barra lateral.");
+            }
+        }
         public bool VerifySettings(out List<string> errors) { errors = new List<string>(); return true; }
     }
 }

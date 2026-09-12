@@ -1,4 +1,4 @@
-using Playnite.SDK;
+﻿using Playnite.SDK;
 using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
 using Playnite.SDK.Events;
@@ -1047,6 +1047,190 @@ namespace BuscaDeJogosLocais
             return true;
         }
 
+        // Tira o jogo da biblioteca do Playnite. Não toca no disco: é para o jogo que a pessoa
+        // já apagou por conta própria e cuja entrada ficou órfã.
+        public bool RemoverDaBiblioteca(Guid gameId)
+        {
+            try
+            {
+                var game = PlayniteApi.Database.Games.Get(gameId);
+                if (game == null) return false;
+                PlayniteApi.Database.Games.Remove(gameId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, string.Format("Falha ao remover jogo da biblioteca: {0}", gameId));
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Explica por que uma subpasta de pasta monitorada está fora da biblioteca, e diz o
+        /// que dá para fazer. A tabela de pastas dizia só "Não importado", e isso escondia
+        /// quatro situações diferentes — a mais traiçoeira é o jogo JÁ estar na biblioteca,
+        /// só que adicionado à mão ou por outra fonte: a busca o reconhecia como "já existe"
+        /// e não importava, e a tabela, que só conta jogo desta extensão, dizia que faltava.
+        /// </summary>
+        public DiagnosticoPasta DiagnosticarPastaNaoImportada(string sub)
+        {
+            var d = new DiagnosticoPasta { Acao = string.Empty };
+            if (string.IsNullOrEmpty(sub)) { d.Motivo = "Caminho vazio."; return d; }
+
+            // 1) Já existe jogo apontando para esta pasta (ou para dentro dela), de qualquer fonte?
+            Game existente = null;
+            try
+            {
+                existente = PlayniteApi.Database.Games.FirstOrDefault(g =>
+                    !string.IsNullOrEmpty(g.InstallDirectory) &&
+                    (LocalGameUtils.EhMesmaPasta(g.InstallDirectory, sub) || LocalGameUtils.IsUnderFolder(g.InstallDirectory, sub)));
+            }
+            catch (Exception ex) { logger.Error(ex, "Falha ao procurar jogo existente para " + sub); }
+
+            if (existente != null)
+            {
+                bool subpasta = !LocalGameUtils.EhMesmaPasta(existente.InstallDirectory, sub);
+                string onde = subpasta ? string.Format(" (aponta para a subpasta {0})", existente.InstallDirectory) : string.Empty;
+                d.JogoRelacionadoId = existente.Id;
+
+                if (existente.PluginId == Id)
+                {
+                    d.Motivo = string.Format("Já é «{0}» nesta extensão{1}. A tabela não casou porque a pasta do jogo não é exatamente esta.", existente.Name, onde);
+                }
+                else if (existente.PluginId == Guid.Empty)
+                {
+                    d.Motivo = string.Format("Já está na biblioteca como «{0}», adicionado à mão no Playnite (fora desta extensão){1}. A busca vê a pasta como \"já existe\" e não importa; a tabela só conta jogo desta extensão.", existente.Name, onde);
+                    d.Acao = "adotar";
+                }
+                else
+                {
+                    d.Motivo = string.Format("Já está na biblioteca como «{0}» pela fonte «{1}»{2}. Esta extensão não mexe em jogo de outra biblioteca.", existente.Name, NomeDoPlugin(existente.PluginId, existente.SourceId), onde);
+                }
+                logger.Info(string.Format("[Diagnóstico] {0}: {1}", sub, d.Motivo));
+                return d;
+            }
+
+            // 2) Tem executável?
+            var exes = new List<string>();
+            int arquivosVistos = 0;
+            try
+            {
+                foreach (var f in EnumerarLimitado(sub, 4, 4000))
+                {
+                    arquivosVistos++;
+                    if (!f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (IsExplosiveFile(f)) continue;
+                    if (IsExcluded(f)) continue;
+                    exes.Add(f);
+                }
+            }
+            catch (Exception ex) { logger.Error(ex, "Falha ao ler " + sub); }
+
+            if (exes.Count == 0)
+            {
+                d.Motivo = arquivosVistos == 0
+                    ? "Pasta vazia (ou sem permissão de leitura). Nada para importar."
+                    : string.Format("Nenhum .exe encontrado ({0} arquivo(s) lidos, até 4 níveis). A busca não tem como importar; se o jogo abre por outro tipo de arquivo, adicione à mão no Playnite.", arquivosVistos);
+                logger.Info(string.Format("[Diagnóstico] {0}: {1}", sub, d.Motivo));
+                return d;
+            }
+
+            string nomeLimpo = LocalGameUtils.CleanGameNameOnly(new DirectoryInfo(sub).Name);
+            string melhor = LocalGameUtils.MelhorExeDaPasta(nomeLimpo, null, null, sub, exes) ?? exes[0];
+            d.Exe = melhor;
+            string exeRel = melhor.Length > sub.Length ? melhor.Substring(sub.Length).TrimStart('\\') : Path.GetFileName(melhor);
+
+            // 3) Existe jogo com este nome cuja pasta sumiu? Então provavelmente é ele, que mudou de lugar.
+            try
+            {
+                string slug = LocalGameUtils.SlugForMatch(nomeLimpo);
+                var perdido = PlayniteApi.Database.Games.FirstOrDefault(g =>
+                    (g.PluginId == Id || g.PluginId == Guid.Empty) &&
+                    !string.IsNullOrEmpty(g.InstallDirectory) &&
+                    !Directory.Exists(g.InstallDirectory) &&
+                    slug.Length >= 3 && LocalGameUtils.SlugForMatch(g.Name) == slug);
+                if (perdido != null)
+                {
+                    d.JogoRelacionadoId = perdido.Id;
+                    d.Acao = "reapontar";
+                    d.Motivo = string.Format("Parece ser «{0}», que na biblioteca aponta para {1} — pasta que não existe mais. Provavelmente mudou de lugar; reapontar mantém tempo de jogo e capa. Executável: {2}.", perdido.Name, perdido.InstallDirectory, exeRel);
+                    logger.Info(string.Format("[Diagnóstico] {0}: {1}", sub, d.Motivo));
+                    return d;
+                }
+            }
+            catch (Exception ex) { logger.Error(ex, "Falha ao procurar jogo perdido para " + sub); }
+
+            d.Acao = "importar";
+            d.Motivo = exes.Count == 1
+                ? string.Format("Executável encontrado ({0}), mas a pasta nunca foi importada. Importe daqui ou pela aba Busca.", exeRel)
+                : string.Format("{0} executáveis encontrados; o mais provável é {1}. A pasta nunca foi importada — importe daqui ou pela aba Busca.", exes.Count, exeRel);
+            logger.Info(string.Format("[Diagnóstico] {0}: {1}", sub, d.Motivo));
+            return d;
+        }
+
+        // Nome legível de quem é dono do jogo: o plugin instalado, ou a fonte, ou o id cru.
+        private string NomeDoPlugin(Guid pluginId, Guid sourceId)
+        {
+            try
+            {
+                var p = PlayniteApi.Addons.Plugins.FirstOrDefault(x => x.Id == pluginId);
+                var lib = p as LibraryPlugin;
+                if (lib != null && !string.IsNullOrEmpty(lib.Name)) return lib.Name;
+            }
+            catch (Exception) { }
+            string fonte = NomeDaFonte(sourceId);
+            return string.IsNullOrEmpty(fonte) ? pluginId.ToString() : fonte;
+        }
+
+        // Leitura com teto: o diagnóstico roda ao abrir a janela da pasta, e uma subpasta com
+        // dezenas de milhares de arquivos não pode travar a tela.
+        private IEnumerable<string> EnumerarLimitado(string raiz, int profundidadeMax, int maxArquivos)
+        {
+            var fila = new Queue<KeyValuePair<string, int>>();
+            fila.Enqueue(new KeyValuePair<string, int>(raiz, 0));
+            int contados = 0;
+            while (fila.Count > 0)
+            {
+                var atual = fila.Dequeue();
+                string[] arquivos;
+                try { arquivos = Directory.GetFiles(atual.Key); }
+                catch (Exception) { continue; }
+                foreach (var a in arquivos)
+                {
+                    if (contados++ >= maxArquivos) yield break;
+                    yield return a;
+                }
+                if (atual.Value >= profundidadeMax) continue;
+                string[] dirs;
+                try { dirs = Directory.GetDirectories(atual.Key); }
+                catch (Exception) { continue; }
+                foreach (var dir in dirs) fila.Enqueue(new KeyValuePair<string, int>(dir, atual.Value + 1));
+            }
+        }
+
+        /// <summary>
+        /// Traz para esta extensão um jogo que foi adicionado à mão no Playnite (PluginId vazio)
+        /// e aponta para uma pasta monitorada. Sem isso ele ficava num limbo: a busca dizia que
+        /// já existia e a tabela de pastas dizia que faltava.
+        /// </summary>
+        public bool AdotarJogo(Guid gameId, string pasta)
+        {
+            var game = PlayniteApi.Database.Games.Get(gameId);
+            if (game == null) return false;
+            if (game.PluginId != Guid.Empty && game.PluginId != Id)
+            {
+                logger.Warn(string.Format("[Adotar] Recusado: «{0}» pertence ao plugin {1}.", game.Name, game.PluginId));
+                return false;
+            }
+            game.PluginId = Id;
+            if (!string.IsNullOrEmpty(pasta) && string.IsNullOrEmpty(game.InstallDirectory)) game.InstallDirectory = pasta;
+            game.IsInstalled = !string.IsNullOrEmpty(game.InstallDirectory) && Directory.Exists(game.InstallDirectory);
+            ApplyLocalSource(game);
+            PlayniteApi.Database.Games.Update(game);
+            logger.Info(string.Format("[Adotar] «{0}» agora é desta extensão ({1}).", game.Name, game.InstallDirectory));
+            return true;
+        }
+
         public List<string> GetSavePatterns()
         {
             if (settings != null && settings.Settings != null && settings.Settings.PadroesSave != null && settings.Settings.PadroesSave.Count > 0)
@@ -1525,6 +1709,17 @@ namespace BuscaDeJogosLocais
             var extensoes = ExtensoesDoPerfil(emulador, varredura.EmulatorProfileId);
             var plataforma = PlataformaDaVarredura(varredura);
 
+            List<string> nomesDeBoot = null;
+            if (extensoes.Count == 0 && PerfilImportaPorScript(emulador, varredura.EmulatorProfileId))
+            {
+                nomesDeBoot = NomesDeRomDaBiblioteca(emulador, mapeadas);
+                if (nomesDeBoot.Count == 0) nomesDeBoot.AddRange(LocalGameUtils.NomesDeBootConhecidos);
+                resumo.Observacao = string.Format(
+                    "Este emulador importa por script (o jogo é uma pasta, não um arquivo). Contei como jogo só os arquivos chamados {0}; o resto da pasta é conteúdo do jogo, não jogo.",
+                    string.Join(", ", nomesDeBoot.ToArray()));
+                logger.Info(string.Format("[Emulador] {0}: perfil por script; nomes de boot usados: {1}.", emulador.Name, string.Join(", ", nomesDeBoot.ToArray())));
+            }
+
             IEnumerable<string> arquivos;
             try
             {
@@ -1542,7 +1737,11 @@ namespace BuscaDeJogosLocais
 
             foreach (var arquivo in arquivos)
             {
-                if (!LocalGameUtils.EhArquivoDeRom(arquivo, extensoes)) continue;
+                if (nomesDeBoot != null)
+                {
+                    if (!LocalGameUtils.EhArquivoDeBoot(arquivo, nomesDeBoot)) continue;
+                }
+                else if (!LocalGameUtils.EhArquivoDeRom(arquivo, extensoes)) continue;
 
                 var chave = LocalGameUtils.NormalizePath(arquivo);
                 Game jogo = null;
@@ -1604,26 +1803,90 @@ namespace BuscaDeJogosLocais
 
             if (string.IsNullOrWhiteSpace(relativo)) return null;
 
-            // A definição embutida às vezes traz curinga ("*.exe", "pcsx2-qt*.exe"): o nome do
-            // binário muda a cada versão do emulador, e é exatamente por isso que o curinga está
-            // lá. Resolver pelo disco é a única leitura honesta.
+            // O StartupExecutable da definição embutida é uma EXPRESSÃO REGULAR, não um nome de
+            // arquivo: todas as ~600 definições do Playnite vêm como "^retroarch\.exe$",
+            // "^shadPS4.*\.exe$". A versão anterior tratava isso como curinga do sistema de
+            // arquivos, o GetFiles estourava com o "^", e TODO emulador embutido saía como
+            // "não encontrado", sem versão e sem ícone. Verificado em 11/09/2026 lendo
+            // Emulation/Emulators/*/emulator.yaml.
             try
             {
+                if (Path.IsPathRooted(relativo) && File.Exists(relativo)) return relativo;
+
+                if (string.IsNullOrWhiteSpace(emulador.InstallDir) || !Directory.Exists(emulador.InstallDir))
+                {
+                    logger.Warn(string.Format("[Emulador] {0}: pasta de instalação vazia ou inexistente ({1}); padrão do executável: {2}.", emulador.Name, emulador.InstallDir, relativo));
+                    return null;
+                }
+
+                bool pareceRegex = relativo.IndexOfAny(new[] { '^', '$', '\\', '[', '(', '+' }) >= 0;
+                if (pareceRegex)
+                {
+                    var re = new System.Text.RegularExpressions.Regex(relativo, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    foreach (var arquivo in EnumerarLimitado(emulador.InstallDir, 2, 5000))
+                    {
+                        if (re.IsMatch(Path.GetFileName(arquivo))) return arquivo;
+                    }
+                    logger.Warn(string.Format("[Emulador] {0}: nenhum arquivo em {1} casa com /{2}/.", emulador.Name, emulador.InstallDir, relativo));
+                    return null;
+                }
+
                 if (relativo.IndexOf('*') >= 0 || relativo.IndexOf('?') >= 0)
                 {
-                    if (string.IsNullOrWhiteSpace(emulador.InstallDir) || !Directory.Exists(emulador.InstallDir)) return null;
                     var achados = Directory.GetFiles(emulador.InstallDir, relativo, SearchOption.TopDirectoryOnly);
+                    if (achados.Length == 0) logger.Warn(string.Format("[Emulador] {0}: nenhum arquivo em {1} casa com {2}.", emulador.Name, emulador.InstallDir, relativo));
                     return achados.Length > 0 ? achados[0] : null;
                 }
 
-                if (Path.IsPathRooted(relativo)) return relativo;
-                if (string.IsNullOrWhiteSpace(emulador.InstallDir)) return null;
-                return Path.Combine(emulador.InstallDir, relativo);
+                var direto = Path.Combine(emulador.InstallDir, relativo);
+                if (!File.Exists(direto)) logger.Warn(string.Format("[Emulador] {0}: executável esperado não existe: {1}.", emulador.Name, direto));
+                return direto;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                logger.Error(ex, string.Format("[Emulador] {0}: falha ao resolver o executável a partir de \"{1}\" em {2}.", emulador.Name, relativo, emulador.InstallDir));
                 return null;
             }
+        }
+
+        /// <summary>O perfil usado pela varredura importa por script (sem ImageExtensions)?</summary>
+        private bool PerfilImportaPorScript(Emulator emulador, string profileId)
+        {
+            if (emulador == null || string.IsNullOrEmpty(profileId)) return false;
+            if (emulador.BuiltinProfiles == null || string.IsNullOrEmpty(emulador.BuiltInConfigId)) return false;
+
+            foreach (var perfil in emulador.BuiltinProfiles)
+            {
+                if (perfil.Id != profileId) continue;
+                foreach (var d in PlayniteApi.Emulation.Emulators)
+                {
+                    if (!string.Equals(d.Id, emulador.BuiltInConfigId, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (d.Profiles == null) return false;
+                    foreach (var dp in d.Profiles)
+                    {
+                        if (string.Equals(dp.Name, perfil.BuiltInProfileName, StringComparison.OrdinalIgnoreCase))
+                            return dp.ScriptGameImport;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Os nomes de arquivo que a biblioteca já usa como ROM para este emulador. É como a
+        /// extensão aprende o que é "jogo" num perfil que importa por script.
+        /// </summary>
+        private List<string> NomesDeRomDaBiblioteca(Emulator emulador, Dictionary<string, Game> mapeadas)
+        {
+            var nomes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var par in mapeadas)
+            {
+                var g = par.Value;
+                if (g.GameActions == null) continue;
+                if (!g.GameActions.Any(a => a.Type == GameActionType.Emulator && a.EmulatorId == emulador.Id)) continue;
+                try { nomes.Add(Path.GetFileName(par.Key)); } catch (Exception) { }
+            }
+            return nomes.ToList();
         }
 
         /// <summary>

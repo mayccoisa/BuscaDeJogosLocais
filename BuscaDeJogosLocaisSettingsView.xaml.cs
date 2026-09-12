@@ -1,4 +1,4 @@
-using System.Windows.Controls;
+﻿using System.Windows.Controls;
 
 namespace BuscaDeJogosLocais
 {
@@ -19,6 +19,10 @@ namespace BuscaDeJogosLocais
         {
             InitializeComponent();
             DataContext = viewModel;
+            // A janela de configurações chama BeginEdit ao abrir e EndEdit no OK; pela barra
+            // lateral ninguém chama nada. Sem isto a tela abria sem a tabela de pastas e sem os
+            // jogos da biblioteca, e o que se mudava nela nunca era gravado.
+            viewModel.AbrirPelaBarraLateral();
         }
     }
 }

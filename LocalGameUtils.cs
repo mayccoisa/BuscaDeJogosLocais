@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -83,6 +83,26 @@ namespace BuscaDeJogosLocais
             ".exe", ".dll", ".bat", ".cmd", ".ps1", ".md"
         };
 
+        // Perfil que importa por SCRIPT (RPCS3, shadPS4, ScummVM) não declara extensão: o jogo
+        // é uma pasta com um arquivo de boot dentro, e o resto (áudio, texturas, .XVAG aos
+        // milhares) não é jogo. Aceitar tudo aqui foi o que fez o shadPS4 acusar 44.978 arquivos
+        // "fora da biblioteca". Só conta o arquivo cujo NOME é um dos que a biblioteca já usa
+        // para este emulador — e, sem biblioteca para aprender, os nomes de boot conhecidos.
+        public static readonly string[] NomesDeBootConhecidos = { "eboot.bin" };
+
+        public static bool EhArquivoDeBoot(string caminho, ICollection<string> nomesDeBoot)
+        {
+            if (string.IsNullOrWhiteSpace(caminho) || nomesDeBoot == null || nomesDeBoot.Count == 0) return false;
+            string nome;
+            try { nome = Path.GetFileName(caminho); }
+            catch (Exception) { return false; }
+            foreach (var n in nomesDeBoot)
+            {
+                if (string.Equals(n, nome, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
         // Um arquivo conta como ROM desta varredura?
         //
         // extensoes vem do perfil do emulador (ImageExtensions). Quando ele declara alguma, ela é
@@ -109,6 +129,9 @@ namespace BuscaDeJogosLocais
                     // O Playnite guarda a extensão SEM ponto ("iso", "chd"); aceitar as duas
                     // formas evita depender desse detalhe.
                     var alvo = declarada.Trim().ToLowerInvariant();
+                    // "<none>" na definição do Playnite significa arquivo SEM extensão (Xenia,
+                    // por exemplo, aceita a pasta extraída do jogo assim).
+                    if (alvo == "<none>") { if (ext.Length == 0) return true; continue; }
                     if (!alvo.StartsWith(".")) alvo = "." + alvo;
                     if (alvo == ext) return true;
                 }

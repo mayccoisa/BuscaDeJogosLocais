@@ -1,4 +1,4 @@
-<UserControl x:Class="BuscaDeJogosLocais.FolderGamesWindow"
+﻿<UserControl x:Class="BuscaDeJogosLocais.FolderGamesWindow"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -38,6 +38,16 @@
                       ItemsSource="{Binding ItensView}" IsReadOnly="True"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                 <DataGrid.Columns>
+                    <!-- Só o jogo com pasta ausente ganha caixa: é o único que tem ação aqui. -->
+                    <DataGridTemplateColumn Width="40" CanUserSort="False">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding Selecionado, UpdateSourceTrigger=PropertyChanged}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          Visibility="{Binding PodeSelecionar, Converter={StaticResource BoolToVisible}}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Jogo" Binding="{Binding Nome}" Width="*" />
                     <DataGridTextColumn Header="Versão" Binding="{Binding Versao}" Width="110" />
 
@@ -52,10 +62,26 @@
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
 
-                    <DataGridTemplateColumn Header="Pasta" Width="280" SortMemberPath="NomePasta">
+                    <DataGridTemplateColumn Header="Pasta" Width="220" SortMemberPath="NomePasta">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock Style="{StaticResource PathText}" Text="{Binding NomePasta}" ToolTip="{Binding Caminho}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- O motivo e a saída. "Não importado" sozinho escondia quatro situações
+                         diferentes, e a pessoa não tinha como saber qual era a dela. -->
+                    <DataGridTemplateColumn Header="Por quê / o que fazer" Width="1.4*" MinWidth="260" SortMemberPath="Motivo">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,4">
+                                    <TextBlock Style="{StaticResource MutedText}" Text="{Binding Motivo}"
+                                               TextWrapping="Wrap" ToolTip="{Binding Motivo}" />
+                                    <Button Style="{StaticResource CellButton}" Margin="0,6,0,0"
+                                            Content="{Binding AcaoTexto}" Click="OnAcaoClick"
+                                            Visibility="{Binding TemAcao, Converter={StaticResource BoolToVisible}}" />
+                                </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -69,8 +95,26 @@
                     <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Margin="0"
                             Content="Abrir pasta no Explorador" Click="OnAbrirPastaClick"
                             Visibility="{Binding PodeAbrirPasta, Converter={StaticResource BoolToVisible}}" />
+                    <!-- Relatório em texto de tudo o que esta janela sabe, para colar num chat
+                         ou num issue. É o que separa "não funcionou" de um problema com endereço. -->
+                    <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}" Margin="8,0,0,0"
+                            Content="Copiar diagnóstico" Click="OnCopiarDiagnosticoClick"
+                            ToolTip="Copia um relatório com cada pasta, a situação, o motivo e a ação sugerida." />
                     <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Margin="0"
                             Content="Fechar" Click="OnFecharClick" />
+
+                    <!-- Ação sobre os jogos cuja pasta sumiu. Antes esta janela só mostrava o
+                         "Pasta ausente" e mandava a pessoa procurar a aba "Jogos que sumiram";
+                         jogo apagado de propósito não precisa de busca, precisa de decisão. -->
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Margin="12,0,0,0"
+                                Visibility="{Binding PodeAgirSobreAusentes, Converter={StaticResource BoolToVisible}}">
+                        <Button Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"
+                                Content="Marcar como desinstalado" Click="OnMarcarDesinstaladoClick"
+                                ToolTip="Mantém o jogo na biblioteca, como desinstalado. Aparece em Histórico › Desinstalações, de onde dá para reinstalar." />
+                        <Button Style="{StaticResource DangerButton}" Margin="0"
+                                Content="Remover da biblioteca" Click="OnRemoverClick"
+                                ToolTip="Apaga o jogo da biblioteca do Playnite. Não mexe em nada no disco." />
+                    </StackPanel>
                 </DockPanel>
             </Border>
         </Grid>

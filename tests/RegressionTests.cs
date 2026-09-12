@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BuscaDeJogosLocais;
 
@@ -498,6 +498,25 @@ class RegressionTests
             !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\capa.jpg", null));
         Check("o proprio emulador nunca conta como rom",
             !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\project64.exe", null));
+
+        // "<none>" na definição do Playnite (Xenia) é arquivo sem extensão.
+        var extXenia = new List<string> { "iso", "xex", "<none>" };
+        Check("<none> aceita arquivo sem extensao",
+            LocalGameUtils.EhArquivoDeRom(@"D:\Roms\X360\default", extXenia));
+        Check("<none> nao vira extensao literal",
+            !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\X360\jogo.<none>", extXenia));
+
+        // Perfil que importa por script (shadPS4, RPCS3): jogo e a pasta com o arquivo de boot;
+        // o resto (.XVAG aos milhares) nao e jogo. Foi o que fez o shadPS4 acusar 44.978 "fora".
+        var boot = new List<string>(LocalGameUtils.NomesDeBootConhecidos);
+        Check("script: eboot.bin conta",
+            LocalGameUtils.EhArquivoDeBoot(@"G:\PS4\Jogo\eboot.bin", boot));
+        Check("script: maiuscula nao muda nada",
+            LocalGameUtils.EhArquivoDeBoot(@"G:\PS3\Jogo\PS3_GAME\USRDIR\EBOOT.BIN", boot));
+        Check("script: audio do jogo NAO conta",
+            !LocalGameUtils.EhArquivoDeBoot(@"G:\PS4\Jogo\sound\ZM_SPAWNFIGHT.XVAG", boot));
+        Check("script: sem lista de nomes nada conta",
+            !LocalGameUtils.EhArquivoDeBoot(@"G:\PS4\Jogo\eboot.bin", new List<string>()));
         Check("arquivo sem extensao nao conta",
             !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\LEIAME", null));
         Check("caminho vazio nao conta",

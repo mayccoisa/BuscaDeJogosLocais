@@ -1,8 +1,23 @@
-# Changelog
+﻿# Changelog
 
 Todas as mudanças notáveis deste projeto serão documentadas aqui.
 
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/).
+
+---
+
+## [0.11.0] - 2026-09-11
+
+### Corrigido
+- **A tela aberta pela barra lateral vinha vazia.** A tabela de pastas monitoradas, a lista de jogos da busca e os filtros só eram carregados quando a janela de Complementos abria; pela barra lateral nada disso rodava, e parecia que a extensão tinha perdido as configurações. Agora a barra lateral carrega o mesmo que a janela — e **grava na hora** o que você muda nela (pasta adicionada, opção marcada), porque ali não existe o botão OK que fazia a gravação.
+- **Todo emulador embutido aparecia como "não encontrado", sem versão e sem ícone.** O executável nas definições do Playnite é uma expressão regular (`^shadPS4.*\.exe$`), e a extensão tratava como nome de arquivo. Quando mesmo assim não acha, o motivo vai para o `playnite.log` (linhas `[Emulador]`) e aparece no cabeçalho de "Ver jogos".
+- **shadPS4 acusava dezenas de milhares de arquivos "fora da biblioteca".** Emulador que importa por script (shadPS4, RPCS3, ScummVM) não declara extensão de ROM, e a regra "vale tudo menos lixo" contava cada arquivo de áudio como jogo. Agora só conta o arquivo de boot que a biblioteca já usa para aquele emulador (`eboot.bin`), e a janela diz isso.
+- `<none>` na lista de extensões do perfil (Xenia) passou a significar "arquivo sem extensão", como no Playnite.
+
+### Adicionado
+- **Ação sobre jogo com pasta ausente**, dentro de "Ver jogos" da pasta monitorada: marque as linhas e escolha **Marcar como desinstalado** (fica na biblioteca, entra no histórico) ou **Remover da biblioteca** (apaga a entrada; não toca no disco). Antes a única saída era a aba "Jogos que sumiram", que é para jogo que mudou de lugar — não para jogo que você apagou de propósito.
+- **Coluna "Por quê / o que fazer"** na mesma janela. "Não importado" escondia situações diferentes, e a pior delas é o jogo **já estar na biblioteca** adicionado à mão ou por outra fonte: a busca dizia "já existe" e não importava, e a tabela, que só conta jogo desta extensão, dizia que faltava. Cada linha agora diz o motivo e, quando cabe, traz o botão: **Importar** (achou o executável), **Trazer para esta extensão** (jogo adicionado à mão) ou **Reapontar para cá** (nome bate com jogo cuja pasta sumiu).
+- **Botão "Copiar diagnóstico"** na janela da pasta: um relatório em texto com cada pasta, situação, motivo, executável e ação sugerida, para colar num chat ou issue.
 
 ---
 
