@@ -6,6 +6,22 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.11.2] - 2026-09-12
+
+### Corrigido
+- **DuckStation listava as faixas de música como jogos.** Jogo de CD vem como um `.cue` mais um `.bin` por faixa, e as faixas depois da primeira são áudio. O Playnite importa só o `.cue`; a extensão agora lê cada `.cue` (e `.m3u`) da pasta e deixa de contar o que eles referenciam. Vale para PlayStation, Saturn, Sega CD e qualquer console de CD.
+- **shadPS4, Xenia e PCSX2 seguiam "não encontrados".** Três causas, todas corrigidas:
+  - perfil personalizado guarda o executável como `{EmulatorDir}\x.exe`, e a variável não era expandida;
+  - a barra invertida desse caminho fazia a extensão tratá-lo como expressão regular;
+  - a busca parava no **primeiro** perfil com executável: um perfil personalizado apontando para um binário que não existe mais escondia o embutido que existia. Agora todos os perfis são tentados, na ordem, e a busca pela regex vai a 3 níveis da pasta de instalação.
+
+  Quando ainda assim não acha, o `playnite.log` recebe uma linha `[Emulador]` com **cada padrão tentado** e a pasta de instalação, e a janela "Ver jogos" diz onde procurar.
+
+### Adicionado
+- **Botão "Abrir pasta dos logs"**, na aba Emuladores e na aba Atualizações: abre o Explorador com o `playnite.log` selecionado. As linhas desta extensão começam com `[Emulador]`, `[Resumo]` e `[Diagnóstico]`.
+
+---
+
 ## [0.11.1] - 2026-09-11
 
 ### Corrigido
