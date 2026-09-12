@@ -45,7 +45,7 @@
                         Content="Atualizar" Command="{Binding AtualizarEmuladoresCommand}" />
                 <Button Style="{StaticResource GhostButton}" Margin="0,0,16,0" VerticalAlignment="Center"
                         Content="Abrir pasta dos logs" Command="{Binding AbrirPastaDosLogsCommand}"
-                        ToolTip="Emulador 'não encontrado' deixa no playnite.log uma linha [Emulador] dizendo qual pasta e qual padrão de executável falharam." />
+                        ToolTip="Emulador 'não encontrado' deixa no extensions.log uma linha [Emulador] dizendo qual pasta e qual padrão de executável falharam." />
                 <TextBlock Style="{StaticResource StatusLabel}" MaxWidth="620" TextWrapping="Wrap"
                            Text="A leitura varre as pastas de ROM inteiras, então ela é sob demanda: numa coleção grande são dezenas de milhares de arquivos, e fazer isso na abertura travaria a tela." />
             </StackPanel>

@@ -815,7 +815,7 @@ namespace BuscaDeJogosLocais
                 catch (Exception) { plugin.PlayniteApi.Dialogs.ShowMessage(caminho, "Log da atualização"); }
             });
 
-            // O playnite.log é onde as linhas [Emulador], [Resumo] e [Diagnóstico] caem. Sem um
+            // O extensions.log é onde as linhas [Emulador], [Resumo] e [Diagnóstico] caem. Sem um
             // atalho, "manda o log" vira uma caça à pasta do Playnite.
             AbrirPastaDosLogsCommand = new RelayCommand<object>((_) => plugin.AbrirPastaDosLogs());
 
@@ -1958,7 +1958,7 @@ namespace BuscaDeJogosLocais
                         if (falha != null)
                         {
                             logger.Error(falha, "Falha ao ler as pastas monitoradas.");
-                            PastasResumoTexto = "Não consegui ler as pastas: " + falha.Message + " (detalhe no playnite.log)";
+                            PastasResumoTexto = "Não consegui ler as pastas: " + falha.Message + " (detalhe no extensions.log)";
                             DiagnosticoTexto = PastasResumoTexto;
                             return;
                         }

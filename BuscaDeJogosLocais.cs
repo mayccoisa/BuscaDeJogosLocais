@@ -1905,7 +1905,12 @@ namespace BuscaDeJogosLocais
             }
         }
 
-        /// <summary>Abre no Explorador a pasta onde o Playnite grava playnite.log e extensions.log.</summary>
+        /// <summary>
+        /// Abre no Explorador a pasta de logs com o extensions.log selecionado. O que uma
+        /// extensão escreve pelo LogManager do SDK vai para o EXTENSIONS.LOG, não para o
+        /// playnite.log — a 0.11.2 apontava para o arquivo errado, e o usuário mandou um log
+        /// sem nenhuma linha [Emulador].
+        /// </summary>
         public void AbrirPastaDosLogs()
         {
             string pasta = null;
@@ -1915,7 +1920,7 @@ namespace BuscaDeJogosLocais
                 PlayniteApi.Dialogs.ShowMessage("Não achei a pasta de configuração do Playnite.", "Logs");
                 return;
             }
-            string log = Path.Combine(pasta, "playnite.log");
+            string log = Path.Combine(pasta, "extensions.log");
             try
             {
                 if (File.Exists(log))

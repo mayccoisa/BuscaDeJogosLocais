@@ -6,6 +6,13 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.11.3] - 2026-09-12
+
+### Corrigido
+- **O botão "Abrir pasta dos logs" selecionava o arquivo errado.** O que as extensões escrevem vai para o **`extensions.log`**, não para o `playnite.log` — e era isso que fazia o log mandado não ter nenhuma linha `[Emulador]`. O botão agora seleciona o `extensions.log`, e todos os textos da tela que apontavam para o outro arquivo foram corrigidos.
+
+---
+
 ## [0.11.2] - 2026-09-12
 
 ### Corrigido

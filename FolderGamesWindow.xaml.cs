@@ -141,7 +141,7 @@ namespace BuscaDeJogosLocais
             catch (Exception ex)
             {
                 plugin.PlayniteApi.Dialogs.ShowErrorMessage(
-                    string.Format("Não deu para executar \"{0}\" em {1}:\n\n{2}\n\nO detalhe está no log do Playnite (playnite.log).", item.AcaoTexto, item.NomePasta, ex.Message),
+                    string.Format("Não deu para executar \"{0}\" em {1}:\n\n{2}\n\nO detalhe está no extensions.log do Playnite.", item.AcaoTexto, item.NomePasta, ex.Message),
                     "Erro");
             }
         }
