@@ -517,6 +517,42 @@ class RegressionTests
             !LocalGameUtils.EhArquivoDeBoot(@"G:\PS4\Jogo\sound\ZM_SPAWNFIGHT.XVAG", boot));
         Check("script: sem lista de nomes nada conta",
             !LocalGameUtils.EhArquivoDeBoot(@"G:\PS4\Jogo\eboot.bin", new List<string>()));
+
+        // Jogo de CD: o .cue e o jogo; os .bin por faixa sao dado + MUSICA. Contar as faixas
+        // fazia o DuckStation acusar dez "jogos" por disco.
+        Console.WriteLine();
+        Console.WriteLine("[ArquivosSubordinados]");
+        var arquivosCd = new List<string> {
+            @"D:\Roms\PS1\Tekken 3.cue",
+            @"D:\Roms\PS1\Tekken 3 (Track 01).bin",
+            @"D:\Roms\PS1\Tekken 3 (Track 02).bin",
+            @"D:\Roms\PS1\Outro.chd",
+            @"D:\Roms\PS1\Colecao.m3u",
+            @"D:\Roms\PS1\Disco2.chd"
+        };
+        Func<string, string[]> leitor = (caminho) =>
+        {
+            if (caminho.EndsWith(".cue")) return new[] {
+                "FILE \"Tekken 3 (Track 01).bin\" BINARY",
+                "  TRACK 01 MODE2/2352",
+                "FILE \"Tekken 3 (Track 02).bin\" BINARY",
+                "  TRACK 02 AUDIO" };
+            if (caminho.EndsWith(".m3u")) return new[] { "# comentario", "Disco2.chd", "" };
+            return null;
+        };
+        var sub = LocalGameUtils.ArquivosSubordinados(arquivosCd, leitor);
+        Check("faixa de dado referenciada pelo cue e subordinada",
+            sub.Contains(LocalGameUtils.NormalizePath(@"D:\Roms\PS1\Tekken 3 (Track 01).bin")));
+        Check("faixa de audio referenciada pelo cue e subordinada",
+            sub.Contains(LocalGameUtils.NormalizePath(@"D:\Roms\PS1\Tekken 3 (Track 02).bin")));
+        Check("disco listado no m3u e subordinado",
+            sub.Contains(LocalGameUtils.NormalizePath(@"D:\Roms\PS1\Disco2.chd")));
+        Check("o proprio cue NAO e subordinado",
+            !sub.Contains(LocalGameUtils.NormalizePath(@"D:\Roms\PS1\Tekken 3.cue")));
+        Check("chd solto continua sendo jogo",
+            !sub.Contains(LocalGameUtils.NormalizePath(@"D:\Roms\PS1\Outro.chd")));
+        Check("leitor que falha nao derruba a regra",
+            LocalGameUtils.ArquivosSubordinados(arquivosCd, (c) => null).Count == 0);
         Check("arquivo sem extensao nao conta",
             !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\LEIAME", null));
         Check("caminho vazio nao conta",

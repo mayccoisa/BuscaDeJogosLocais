@@ -750,6 +750,7 @@ namespace BuscaDeJogosLocais
 
         // Onde o auxiliar da atualização registra o que fez — é o que explica uma troca que não pegou.
         public RelayCommand<object> AbrirLogAtualizacaoCommand { get; private set; }
+        public RelayCommand<object> AbrirPastaDosLogsCommand { get; private set; }
 
         public string UltimoScanTexto
         {
@@ -813,6 +814,10 @@ namespace BuscaDeJogosLocais
                 try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(caminho) { UseShellExecute = true }); }
                 catch (Exception) { plugin.PlayniteApi.Dialogs.ShowMessage(caminho, "Log da atualização"); }
             });
+
+            // O playnite.log é onde as linhas [Emulador], [Resumo] e [Diagnóstico] caem. Sem um
+            // atalho, "manda o log" vira uma caça à pasta do Playnite.
+            AbrirPastaDosLogsCommand = new RelayCommand<object>((_) => plugin.AbrirPastaDosLogs());
 
             // Inicializar Views de Coleção
             JogosEncontradosView = CollectionViewSource.GetDefaultView(JogosEncontrados);

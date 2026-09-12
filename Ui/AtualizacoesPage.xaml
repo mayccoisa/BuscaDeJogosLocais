@@ -1,4 +1,4 @@
-<UserControl x:Class="BuscaDeJogosLocais.Ui.AtualizacoesPage"
+﻿<UserControl x:Class="BuscaDeJogosLocais.Ui.AtualizacoesPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -46,6 +46,9 @@
                                 Command="{Binding CheckUpdateCommand}" />
                         <Button Style="{StaticResource GhostButton}" Content="Ver log da última atualização"
                                 Command="{Binding AbrirLogAtualizacaoCommand}" />
+                        <Button Style="{StaticResource GhostButton}" Content="Abrir pasta dos logs"
+                                Command="{Binding AbrirPastaDosLogsCommand}"
+                                ToolTip="Abre a pasta do Playnite com o playnite.log selecionado. As linhas desta extensão começam com [Emulador], [Resumo] e [Diagnóstico]." />
                     </StackPanel>
 
                     <Border Style="{StaticResource Separator}" />

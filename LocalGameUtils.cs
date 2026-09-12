@@ -103,6 +103,62 @@ namespace BuscaDeJogosLocais
             return false;
         }
 
+        /// <summary>
+        /// Os arquivos que um .cue ou .m3u referencia. Jogo de CD (PlayStation, Saturn, Sega CD)
+        /// costuma vir como um .cue mais um .bin por faixa — "Jogo (Track 01).bin" é o dado,
+        /// e as outras faixas são MÚSICA. O Playnite importa o .cue e nunca as faixas; contar
+        /// as faixas era o que fazia o DuckStation acusar dez "jogos" por disco.
+        ///
+        /// lerLinhas recebe o caminho do .cue/.m3u e devolve o texto dele; é injetado para a
+        /// regra ser testável sem disco.
+        /// </summary>
+        public static HashSet<string> ArquivosSubordinados(IEnumerable<string> arquivos, Func<string, string[]> lerLinhas)
+        {
+            var subordinados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (arquivos == null || lerLinhas == null) return subordinados;
+
+            var cueRegex = new Regex("^\\s*FILE\\s+\"(?<f>[^\"]+)\"", RegexOptions.IgnoreCase);
+
+            foreach (var arquivo in arquivos)
+            {
+                string ext;
+                try { ext = Path.GetExtension(arquivo); } catch (Exception) { continue; }
+                if (ext == null) continue;
+                ext = ext.ToLowerInvariant();
+                if (ext != ".cue" && ext != ".m3u" && ext != ".m3u8") continue;
+
+                string pasta;
+                string[] linhas;
+                try { pasta = Path.GetDirectoryName(arquivo); linhas = lerLinhas(arquivo); }
+                catch (Exception) { continue; }
+                if (linhas == null || pasta == null) continue;
+
+                foreach (var linha in linhas)
+                {
+                    if (string.IsNullOrWhiteSpace(linha)) continue;
+                    string referencia = null;
+                    if (ext == ".cue")
+                    {
+                        var m = cueRegex.Match(linha);
+                        if (m.Success) referencia = m.Groups["f"].Value;
+                    }
+                    else
+                    {
+                        var l = linha.Trim();
+                        if (!l.StartsWith("#")) referencia = l;
+                    }
+                    if (string.IsNullOrEmpty(referencia)) continue;
+
+                    string completo;
+                    try { completo = Path.IsPathRooted(referencia) ? referencia : Path.Combine(pasta, referencia); }
+                    catch (Exception) { continue; }
+                    subordinados.Add(NormalizePath(completo));
+                }
+            }
+
+            return subordinados;
+        }
+
         // Um arquivo conta como ROM desta varredura?
         //
         // extensoes vem do perfil do emulador (ImageExtensions). Quando ele declara alguma, ela é

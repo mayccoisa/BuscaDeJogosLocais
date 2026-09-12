@@ -1735,8 +1735,17 @@ namespace BuscaDeJogosLocais
                 return;
             }
 
-            foreach (var arquivo in arquivos)
+            // Faixas de áudio referenciadas por .cue (e discos listados num .m3u) não são jogo:
+            // o Playnite importa o .cue/.m3u, não o que está dentro dele.
+            var lista = arquivos.ToList();
+            var subordinados = LocalGameUtils.ArquivosSubordinados(lista, LerLinhasSeguro);
+            if (subordinados.Count > 0)
+                logger.Info(string.Format("[Emulador] {0}: {1} arquivo(s) em {2} são faixas/discos de .cue ou .m3u e não contam.", emulador.Name, subordinados.Count, varredura.Directory));
+
+            foreach (var arquivo in lista)
             {
+                if (subordinados.Contains(LocalGameUtils.NormalizePath(arquivo))) continue;
+
                 if (nomesDeBoot != null)
                 {
                     if (!LocalGameUtils.EhArquivoDeBoot(arquivo, nomesDeBoot)) continue;
@@ -1760,6 +1769,12 @@ namespace BuscaDeJogosLocais
             }
         }
 
+        private static string[] LerLinhasSeguro(string caminho)
+        {
+            try { return File.ReadAllLines(caminho); }
+            catch (Exception) { return null; }
+        }
+
         /// <summary>
         /// O executável do emulador. Perfil personalizado guarda o caminho; perfil embutido só
         /// guarda o nome, e o executável mora na definição que o Playnite distribui.
@@ -1770,19 +1785,22 @@ namespace BuscaDeJogosLocais
         {
             if (emulador == null) return null;
 
-            string relativo = null;
+            // Todos os candidatos, na ordem: perfis personalizados (caminho literal, pode trazer
+            // {EmulatorDir}) e depois os perfis da definição embutida (expressão regular). A
+            // versão anterior parava no PRIMEIRO perfil com executável; um perfil personalizado
+            // apontando para um binário que não existe mais escondia o embutido que existia.
+            var candidatos = new List<KeyValuePair<string, bool>>(); // (padrão, éRegex)
 
             if (emulador.CustomProfiles != null)
             {
                 foreach (var perfil in emulador.CustomProfiles)
                 {
                     if (perfil == null || string.IsNullOrWhiteSpace(perfil.Executable)) continue;
-                    relativo = perfil.Executable;
-                    break;
+                    candidatos.Add(new KeyValuePair<string, bool>(perfil.Executable, false));
                 }
             }
 
-            if (relativo == null && emulador.BuiltinProfiles != null && !string.IsNullOrEmpty(emulador.BuiltInConfigId))
+            if (emulador.BuiltinProfiles != null && !string.IsNullOrEmpty(emulador.BuiltInConfigId))
             {
                 EmulatorDefinition definicao = null;
                 foreach (var d in PlayniteApi.Emulation.Emulators)
@@ -1790,17 +1808,39 @@ namespace BuscaDeJogosLocais
                     if (string.Equals(d.Id, emulador.BuiltInConfigId, StringComparison.OrdinalIgnoreCase)) { definicao = d; break; }
                 }
 
-                if (definicao != null && definicao.Profiles != null)
+                if (definicao == null)
+                {
+                    logger.Warn(string.Format("[Emulador] {0}: BuiltInConfigId \"{1}\" não existe nas definições do Playnite.", emulador.Name, emulador.BuiltInConfigId));
+                }
+                else if (definicao.Profiles != null)
                 {
                     foreach (var perfil in definicao.Profiles)
                     {
                         if (perfil == null || string.IsNullOrWhiteSpace(perfil.StartupExecutable)) continue;
-                        relativo = perfil.StartupExecutable;
-                        break;
+                        candidatos.Add(new KeyValuePair<string, bool>(perfil.StartupExecutable, true));
                     }
                 }
             }
 
+            if (candidatos.Count == 0)
+            {
+                logger.Warn(string.Format("[Emulador] {0}: nenhum perfil (personalizado ou embutido) declara executável. InstallDir={1}", emulador.Name, emulador.InstallDir));
+                return null;
+            }
+
+            foreach (var candidato in candidatos)
+            {
+                var achado = ResolverExecutavel(emulador, candidato.Key, candidato.Value);
+                if (!string.IsNullOrEmpty(achado)) return achado;
+            }
+
+            logger.Warn(string.Format("[Emulador] {0}: nenhum dos {1} padrão(ões) resolveu em InstallDir={2}: {3}",
+                emulador.Name, candidatos.Count, emulador.InstallDir, string.Join(" | ", candidatos.Select(c => c.Key).ToArray())));
+            return null;
+        }
+
+        private string ResolverExecutavel(Emulator emulador, string relativo, bool ehRegex)
+        {
             if (string.IsNullOrWhiteSpace(relativo)) return null;
 
             // O StartupExecutable da definição embutida é uma EXPRESSÃO REGULAR, não um nome de
@@ -1811,41 +1851,81 @@ namespace BuscaDeJogosLocais
             // Emulation/Emulators/*/emulator.yaml.
             try
             {
-                if (Path.IsPathRooted(relativo) && File.Exists(relativo)) return relativo;
+                string installDir = emulador.InstallDir;
 
-                if (string.IsNullOrWhiteSpace(emulador.InstallDir) || !Directory.Exists(emulador.InstallDir))
+                // Perfil personalizado vem com as variáveis do Playnite ("{EmulatorDir}\\x.exe").
+                // Sem expandir, o caminho nunca existe e o emulador sai como "não encontrado".
+                if (!ehRegex)
                 {
-                    logger.Warn(string.Format("[Emulador] {0}: pasta de instalação vazia ou inexistente ({1}); padrão do executável: {2}.", emulador.Name, emulador.InstallDir, relativo));
+                    relativo = relativo
+                        .Replace("{EmulatorDir}", installDir ?? string.Empty)
+                        .Replace("{PlayniteDir}", PlayniteApi.Paths.ApplicationPath ?? string.Empty)
+                        .Trim().Trim('"');
+                    if (Path.IsPathRooted(relativo))
+                    {
+                        if (File.Exists(relativo)) return relativo;
+                        logger.Warn(string.Format("[Emulador] {0}: perfil aponta para {1}, que não existe.", emulador.Name, relativo));
+                        return null;
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(installDir) || !Directory.Exists(installDir))
+                {
+                    logger.Warn(string.Format("[Emulador] {0}: pasta de instalação vazia ou inexistente ({1}); padrão do executável: {2}.", emulador.Name, installDir, relativo));
                     return null;
                 }
 
-                bool pareceRegex = relativo.IndexOfAny(new[] { '^', '$', '\\', '[', '(', '+' }) >= 0;
-                if (pareceRegex)
+                if (ehRegex)
                 {
                     var re = new System.Text.RegularExpressions.Regex(relativo, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                    foreach (var arquivo in EnumerarLimitado(emulador.InstallDir, 2, 5000))
+                    foreach (var arquivo in EnumerarLimitado(installDir, 3, 20000))
                     {
                         if (re.IsMatch(Path.GetFileName(arquivo))) return arquivo;
                     }
-                    logger.Warn(string.Format("[Emulador] {0}: nenhum arquivo em {1} casa com /{2}/.", emulador.Name, emulador.InstallDir, relativo));
+                    logger.Warn(string.Format("[Emulador] {0}: nenhum arquivo em {1} (3 níveis) casa com /{2}/.", emulador.Name, installDir, relativo));
                     return null;
                 }
 
                 if (relativo.IndexOf('*') >= 0 || relativo.IndexOf('?') >= 0)
                 {
-                    var achados = Directory.GetFiles(emulador.InstallDir, relativo, SearchOption.TopDirectoryOnly);
-                    if (achados.Length == 0) logger.Warn(string.Format("[Emulador] {0}: nenhum arquivo em {1} casa com {2}.", emulador.Name, emulador.InstallDir, relativo));
+                    var achados = Directory.GetFiles(installDir, relativo, SearchOption.TopDirectoryOnly);
+                    if (achados.Length == 0) logger.Warn(string.Format("[Emulador] {0}: nenhum arquivo em {1} casa com {2}.", emulador.Name, installDir, relativo));
                     return achados.Length > 0 ? achados[0] : null;
                 }
 
-                var direto = Path.Combine(emulador.InstallDir, relativo);
-                if (!File.Exists(direto)) logger.Warn(string.Format("[Emulador] {0}: executável esperado não existe: {1}.", emulador.Name, direto));
-                return direto;
+                var direto = Path.Combine(installDir, relativo);
+                if (File.Exists(direto)) return direto;
+                logger.Warn(string.Format("[Emulador] {0}: executável esperado não existe: {1}.", emulador.Name, direto));
+                return null;
             }
             catch (Exception ex)
             {
                 logger.Error(ex, string.Format("[Emulador] {0}: falha ao resolver o executável a partir de \"{1}\" em {2}.", emulador.Name, relativo, emulador.InstallDir));
                 return null;
+            }
+        }
+
+        /// <summary>Abre no Explorador a pasta onde o Playnite grava playnite.log e extensions.log.</summary>
+        public void AbrirPastaDosLogs()
+        {
+            string pasta = null;
+            try { pasta = PlayniteApi.Paths.ConfigurationPath; } catch (Exception) { }
+            if (string.IsNullOrEmpty(pasta) || !Directory.Exists(pasta))
+            {
+                PlayniteApi.Dialogs.ShowMessage("Não achei a pasta de configuração do Playnite.", "Logs");
+                return;
+            }
+            string log = Path.Combine(pasta, "playnite.log");
+            try
+            {
+                if (File.Exists(log))
+                    System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + log + "\"");
+                else
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pasta) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                PlayniteApi.Dialogs.ShowMessage("A pasta dos logs é:\n" + pasta + "\n\n(" + ex.Message + ")", "Logs");
             }
         }
 

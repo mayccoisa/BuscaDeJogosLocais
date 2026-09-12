@@ -69,7 +69,8 @@ namespace BuscaDeJogosLocais
                 var texto = "Pastas varridas: " + resumo.Pastas;
                 if (!resumo.ExecutavelExiste)
                     texto += "\nExecutável do emulador não encontrado" +
-                             (string.IsNullOrEmpty(resumo.InstallDir) ? " (pasta de instalação vazia no Playnite)." : " em " + resumo.InstallDir + ". Veja o playnite.log, linhas [Emulador].");
+                             (string.IsNullOrEmpty(resumo.InstallDir) ? " (pasta de instalação vazia no Playnite)." : " em " + resumo.InstallDir + ".") +
+                             " O playnite.log tem uma linha [Emulador] com o padrão tentado — botão \"Abrir pasta dos logs\" na aba Emuladores.";
                 if (!string.IsNullOrEmpty(resumo.Observacao)) texto += "\n" + resumo.Observacao;
                 return texto;
             }
