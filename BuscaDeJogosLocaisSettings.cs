@@ -1171,7 +1171,7 @@ namespace BuscaDeJogosLocais
                 RecalcularEstatisticas();
             });
 
-            AtualizarResumoPastasCommand = new RelayCommand<object>((_) => RecalcularEstatisticas());
+            AtualizarResumoPastasCommand = new RelayCommand<object>((_) => CarregarTelaEmSegundoPlano());
 
             VerJogosDaPastaCommand = new RelayCommand<object>((param) =>
             {
@@ -1518,12 +1518,55 @@ namespace BuscaDeJogosLocais
         /// como raiz de jogo —, então o que aparece como "não importado" é exatamente o que o
         /// scan enxergaria ali.
         /// </summary>
+        // Resultado de uma leitura das pastas monitoradas, pronto para ser aplicado na UI.
+        public class ResumoCalculado
+        {
+            public List<PastaResumo> Pastas = new List<PastaResumo>();
+            public Dictionary<string, int> Totais = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public string Texto = string.Empty;
+            public long Milissegundos;
+        }
+
         public void RecalcularResumoPastas()
         {
-            PastasResumo.Clear();
-            PastaTotais.Limpar();
+            AplicarResumoPastas(CalcularResumoPastas());
+        }
 
-            if (Settings.Pastas == null) return;
+        /// <summary>
+        /// Lê as pastas monitoradas e devolve o resumo SEM tocar em nada da UI, para poder rodar
+        /// fora da thread de interface. Na 0.11.0 a barra lateral passou a fazer esta leitura ao
+        /// abrir, na thread de UI, e o Playnite ficou minutos "carregando": cada Directory.Exists
+        /// num HD desligado ou numa unidade de rede fora do ar custa segundos, e eram dezenas.
+        /// Por isso a existência é decidida uma vez por caminho, e pasta abaixo de uma raiz que
+        /// não existe é dada como ausente sem perguntar ao disco.
+        /// </summary>
+        public ResumoCalculado CalcularResumoPastas()
+        {
+            var r = new ResumoCalculado();
+            var cronometro = System.Diagnostics.Stopwatch.StartNew();
+            var pastasMonitoradas = Settings.Pastas == null ? new List<string>() : Settings.Pastas.ToList();
+            if (pastasMonitoradas.Count == 0) { r.Texto = "Nenhuma pasta monitorada."; return r; }
+
+            var existe = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            var raizesAusentes = new List<string>();
+            Func<string, bool> Existe = (caminho) =>
+            {
+                if (string.IsNullOrEmpty(caminho)) return false;
+                bool ok;
+                if (existe.TryGetValue(caminho, out ok)) return ok;
+                foreach (var raiz in raizesAusentes)
+                {
+                    if (LocalGameUtils.IsUnderFolder(caminho, raiz)) { existe[caminho] = false; return false; }
+                }
+                try { ok = Directory.Exists(caminho); } catch (Exception) { ok = false; }
+                existe[caminho] = ok;
+                return ok;
+            };
+
+            foreach (var pasta in pastasMonitoradas)
+            {
+                if (!Existe(pasta)) raizesAusentes.Add(pasta);
+            }
 
             var jogosLocais = plugin.PlayniteApi.Database.Games
                 .Where(g => g.PluginId == plugin.Id && !string.IsNullOrEmpty(g.InstallDirectory))
@@ -1533,16 +1576,15 @@ namespace BuscaDeJogosLocais
                 ? Settings.CaminhosIgnorados.Select(e => e.CaminhoExe).Where(c => !string.IsNullOrEmpty(c)).ToList()
                 : new List<string>();
 
-            foreach (var pasta in Settings.Pastas)
+            foreach (var pasta in pastasMonitoradas)
             {
                 var resumo = new PastaResumo
                 {
                     Caminho = pasta,
-                    ExisteEmDisco = Directory.Exists(pasta),
+                    ExisteEmDisco = Existe(pasta),
                     Itens = new List<PastaJogoItem>()
                 };
 
-                // Jogos da biblioteca que apontam para dentro desta pasta monitorada.
                 var jogosDaPasta = jogosLocais
                     .Where(g => LocalGameUtils.IsUnderFolder(g.InstallDirectory, pasta))
                     .ToList();
@@ -1552,7 +1594,7 @@ namespace BuscaDeJogosLocais
                 {
                     vinculados.Add(plugin.NormalizePath(jogo.InstallDirectory));
 
-                    bool pastaSumiu = !Directory.Exists(jogo.InstallDirectory);
+                    bool pastaSumiu = !Existe(jogo.InstallDirectory);
                     if (pastaSumiu) resumo.ComProblema++; else resumo.NaBiblioteca++;
 
                     resumo.Itens.Add(new PastaJogoItem
@@ -1573,7 +1615,7 @@ namespace BuscaDeJogosLocais
                     catch (Exception) { subpastas = new string[0]; }
 
                     resumo.TotalSubpastas = subpastas.Length;
-                    PastaTotais.Registrar(pasta, subpastas.Length);
+                    r.Totais[pasta] = subpastas.Length;
 
                     foreach (var sub in subpastas)
                     {
@@ -1594,12 +1636,12 @@ namespace BuscaDeJogosLocais
                     }
                 }
 
-                PastasResumo.Add(resumo);
+                r.Pastas.Add(resumo);
             }
 
             // Jogos locais que não caem em nenhuma pasta monitorada: some da vista se não mostrar.
             var orfaos = jogosLocais
-                .Where(g => !Settings.Pastas.Any(p => LocalGameUtils.IsUnderFolder(g.InstallDirectory, p)))
+                .Where(g => !pastasMonitoradas.Any(p => LocalGameUtils.IsUnderFolder(g.InstallDirectory, p)))
                 .ToList();
 
             if (orfaos.Count > 0)
@@ -1617,22 +1659,37 @@ namespace BuscaDeJogosLocais
                         NomePasta = SafeFolderName(g.InstallDirectory),
                         Caminho = g.InstallDirectory,
                         Versao = g.Version,
-                        Status = Directory.Exists(g.InstallDirectory) ? "Na biblioteca" : "Pasta ausente"
+                        Status = Existe(g.InstallDirectory) ? "Na biblioteca" : "Pasta ausente"
                     }).ToList()
                 };
                 resumo.ComProblema = resumo.Itens.Count(i => i.Status == "Pasta ausente");
                 resumo.NaBiblioteca -= resumo.ComProblema;
-                PastasResumo.Add(resumo);
+                r.Pastas.Add(resumo);
             }
 
-            PastasResumoTexto = string.Format(
+            r.Texto = string.Format(
                 "Total: {0} jogo(s) na biblioteca · {1} pasta(s) fora · {2} com pasta ausente · {3} ignorado(s), em {4} pasta(s) monitorada(s).",
-                PastasResumo.Sum(p => p.NaBiblioteca),
-                PastasResumo.Sum(p => p.NaoImportados),
-                PastasResumo.Sum(p => p.ComProblema),
-                PastasResumo.Sum(p => p.Ignorados),
-                Settings.Pastas.Count);
+                r.Pastas.Sum(p => p.NaBiblioteca),
+                r.Pastas.Sum(p => p.NaoImportados),
+                r.Pastas.Sum(p => p.ComProblema),
+                r.Pastas.Sum(p => p.Ignorados),
+                pastasMonitoradas.Count);
 
+            cronometro.Stop();
+            r.Milissegundos = cronometro.ElapsedMilliseconds;
+            logger.Info(string.Format("[Resumo] {0} pasta(s) monitorada(s), {1} jogo(s) locais, {2} caminho(s) consultados no disco, {3} raiz(es) inacessível(is): {4} ms.",
+                pastasMonitoradas.Count, jogosLocais.Count, existe.Count, raizesAusentes.Count, r.Milissegundos));
+            return r;
+        }
+
+        /// <summary>Joga o resultado da leitura nas coleções que a tela observa. Thread de UI.</summary>
+        public void AplicarResumoPastas(ResumoCalculado r)
+        {
+            PastasResumo.Clear();
+            PastaTotais.Limpar();
+            foreach (var par in r.Totais) PastaTotais.Registrar(par.Key, par.Value);
+            foreach (var resumo in r.Pastas) PastasResumo.Add(resumo);
+            PastasResumoTexto = r.Texto;
             AtualizarIndicadores();
         }
 
@@ -1731,6 +1788,7 @@ namespace BuscaDeJogosLocais
         public void CarregarJogosDaBiblioteca()
         {
             JogosEncontrados.Clear();
+            var verificacoes = IndiceDeVerificacoes();
 
             var jogosLocais = plugin.PlayniteApi.Database.Games
                 .Where(g => g.PluginId == plugin.Id && !string.IsNullOrEmpty(g.InstallDirectory))
@@ -1753,9 +1811,30 @@ namespace BuscaDeJogosLocais
                     PastaMonitoradaPai = pastaPai != null ? pastaPai : "(fora das pastas monitoradas)",
                     JaExiste = true,
                     Selecionado = false,
-                    UltimaVerificacao = plugin.ObterUltimaVerificacao(jogo.InstallDirectory)
+                    UltimaVerificacao = UltimaVerificacaoDe(verificacoes, jogo.InstallDirectory)
                 });
             }
+        }
+
+        // Um dicionário em vez de FirstOrDefault por jogo: com milhares de verificações
+        // registradas e centenas de jogos, a busca linear era quadrática.
+        private Dictionary<string, string> IndiceDeVerificacoes()
+        {
+            var indice = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (Settings.Verificacoes == null) return indice;
+            foreach (var v in Settings.Verificacoes)
+            {
+                if (v == null || string.IsNullOrEmpty(v.PastaRaiz)) continue;
+                indice[v.PastaRaiz] = v.Data;
+            }
+            return indice;
+        }
+
+        private static string UltimaVerificacaoDe(Dictionary<string, string> indice, string pastaRaiz)
+        {
+            string data;
+            if (string.IsNullOrEmpty(pastaRaiz) || !indice.TryGetValue(pastaRaiz, out data)) return "—";
+            return data;
         }
 
         private static string ExePrincipal(Game jogo)
@@ -1768,30 +1847,25 @@ namespace BuscaDeJogosLocais
         public void RecalcularEstatisticas()
         {
             RecalcularResumoPastas();
+            AtualizarPastasEstatisticas();
+        }
 
+        // O texto antigo desta propriedade era montado num laço "cada subpasta × cada jogo da
+        // biblioteca" com Directory.GetDirectories no meio — o mesmo trabalho que o resumo já
+        // faz, repetido, e nenhuma tela o exibe. Fica só o que o resumo já sabe.
+        private void AtualizarPastasEstatisticas()
+        {
             if (Settings.Pastas == null || Settings.Pastas.Count == 0)
             {
                 PastasEstatisticas = "Nenhuma pasta monitorada no momento.";
                 return;
             }
-
             var builder = new System.Text.StringBuilder();
-            builder.AppendLine("📊 Resumo das Pastas Monitoradas:");
-            foreach (var pasta in Settings.Pastas)
+            foreach (var p in PastasResumo)
             {
-                if (Directory.Exists(pasta))
-                {
-                    try {
-                        var dirs = Directory.GetDirectories(pasta);
-                        int totalPastas = dirs.Length;
-                        int pastasVinculadas = dirs.Count(d => plugin.PlayniteApi.Database.Games.Any(g => 
-                            g.InstallDirectory != null && 
-                            plugin.NormalizePath(g.InstallDirectory).Equals(plugin.NormalizePath(d), StringComparison.OrdinalIgnoreCase)
-                        ));
-                        builder.AppendLine(string.Format("- {0}: {1} pastas ({2} vinculadas).", pasta, totalPastas, pastasVinculadas));
-                    } catch (Exception) { builder.AppendLine(string.Format("- {0}: Erro de leitura.", pasta)); }
-                }
-                else builder.AppendLine(string.Format("- {0}: (Inacessível)", pasta));
+                builder.AppendLine(p.ExisteEmDisco
+                    ? string.Format("- {0}: {1} pastas ({2} vinculadas).", p.Caminho, p.TotalSubpastas, p.NaBiblioteca)
+                    : string.Format("- {0}: (Inacessível)", p.Caminho));
             }
             PastasEstatisticas = builder.ToString();
         }
@@ -1848,8 +1922,52 @@ namespace BuscaDeJogosLocais
         /// </summary>
         public void AbrirPelaBarraLateral()
         {
-            CarregarTela();
             ObservarSettingsParaSalvar();
+            CarregarTelaEmSegundoPlano();
+        }
+
+        private bool carregandoEmSegundoPlano;
+
+        // A leitura das pastas roda fora da thread de UI e o resultado é aplicado depois. Na
+        // 0.11.0 ela rodava síncrona ao abrir a barra lateral e travou o Playnite por minutos
+        // numa biblioteca com HD desligado.
+        public void CarregarTelaEmSegundoPlano()
+        {
+            if (carregandoEmSegundoPlano) return;
+            carregandoEmSegundoPlano = true;
+            PastasResumoTexto = "Lendo as pastas monitoradas…";
+            DiagnosticoTexto = "Lendo as pastas monitoradas…";
+
+            var dispatcher = plugin.PlayniteApi.MainView.UIDispatcher;
+            System.Threading.Tasks.Task.Factory.StartNew(() =>
+            {
+                ResumoCalculado r = null;
+                Exception falha = null;
+                try { r = CalcularResumoPastas(); }
+                catch (Exception ex) { falha = ex; }
+
+                dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        if (falha != null)
+                        {
+                            logger.Error(falha, "Falha ao ler as pastas monitoradas.");
+                            PastasResumoTexto = "Não consegui ler as pastas: " + falha.Message + " (detalhe no playnite.log)";
+                            DiagnosticoTexto = PastasResumoTexto;
+                            return;
+                        }
+                        AplicarResumoPastas(r);
+                        AtualizarPastasEstatisticas();
+                        CarregarJogosDaBiblioteca();
+                        OnPropertyChanged("OpcoesPastas");
+                    }
+                    finally
+                    {
+                        carregandoEmSegundoPlano = false;
+                    }
+                }));
+            });
         }
 
         private void ObservarSettingsParaSalvar()

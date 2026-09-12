@@ -6,6 +6,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.11.1] - 2026-09-11
+
+### Corrigido
+- **Playnite travado por minutos ao abrir "Jogos locais" pela barra lateral.** A 0.11.0 passou a ler as pastas monitoradas ao abrir a tela, e fazia isso na thread de interface: cada `Directory.Exists` numa pasta de HD desligado ou unidade de rede fora do ar custa segundos, e eram um por jogo. Além disso, um texto que nenhuma tela mostra era montado num laço "cada subpasta × cada jogo da biblioteca", com leitura de disco no meio. Agora:
+  - a leitura roda **fora da thread de interface**; a tela abre na hora com "Lendo as pastas monitoradas…" e preenche quando termina;
+  - a existência de cada caminho é consultada **uma vez só**, e pasta abaixo de uma raiz inacessível é dada como ausente sem perguntar ao disco;
+  - o laço redundante foi removido, e a busca de "última verificação" por jogo deixou de ser linear.
+  - Cada leitura escreve no `playnite.log` uma linha `[Resumo]` com quantas pastas, jogos e caminhos consultou e quanto tempo levou — é isso que diz onde o tempo foi, se ainda for.
+- O botão **"Atualizar resumo"** da aba Pastas monitoradas também passou a ler em segundo plano.
+
+---
+
 ## [0.11.0] - 2026-09-11
 
 ### Corrigido
