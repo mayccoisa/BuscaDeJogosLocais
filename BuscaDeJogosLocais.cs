@@ -1231,6 +1231,34 @@ namespace BuscaDeJogosLocais
             return true;
         }
 
+        /// <summary>
+        /// O caminho está dentro de uma pasta monitorada marcada como disco removível cuja
+        /// raiz não está presente agora? Nesse caso o jogo não sumiu: o HD é que está fora.
+        /// Barato: só consulta as raízes removíveis, nunca o caminho do jogo.
+        /// </summary>
+        public bool DiscoRemovivelDesconectado(string caminho)
+        {
+            if (string.IsNullOrEmpty(caminho)) return false;
+            var removiveis = settings.Settings.PastasRemoviveis;
+            if (removiveis == null || removiveis.Count == 0) return false;
+            foreach (var raiz in removiveis)
+            {
+                if (string.IsNullOrEmpty(raiz)) continue;
+                if (!LocalGameUtils.IsUnderFolder(caminho, raiz) && !LocalGameUtils.EhMesmaPasta(caminho, raiz)) continue;
+                bool existe;
+                try { existe = Directory.Exists(raiz); } catch (Exception) { existe = false; }
+                if (!existe) return true;
+            }
+            return false;
+        }
+
+        /// <summary>O ícone de um emulador já lido (para restaurar a aba do cache).</summary>
+        public object IconeDoEmulador(string executavel, bool existe)
+        {
+            if (!existe || string.IsNullOrEmpty(executavel) || executavel == "—") return null;
+            return IconeDoExecutavel(executavel);
+        }
+
         public List<string> GetSavePatterns()
         {
             if (settings != null && settings.Settings != null && settings.Settings.PadroesSave != null && settings.Settings.PadroesSave.Count > 0)
@@ -2321,6 +2349,7 @@ namespace BuscaDeJogosLocais
                 foreach (var game in games)
                 {
                     if (progressArgs.CancelToken.IsCancellationRequested) break;
+                    if (DiscoRemovivelDesconectado(game.InstallDirectory)) continue;
 
                     bool folderMissing = false;
                     bool exeMissing = false;

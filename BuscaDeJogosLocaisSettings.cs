@@ -260,6 +260,11 @@ namespace BuscaDeJogosLocais
         public string Caminho { get; set; }
         public bool ExisteEmDisco { get; set; }
         public int TotalSubpastas { get; set; }
+
+        // Marcada como disco removível pela pessoa. Muda o que "não existe" significa.
+        private bool removivel;
+        public bool Removivel { get { return removivel; } set { SetValue(ref removivel, value); OnPropertyChanged("StatusTexto"); } }
+        public bool DiscoDesconectado { get { return Removivel && !ExisteEmDisco; } }
         public int NaBiblioteca { get; set; }
         public int NaoImportados { get; set; }
         public int ComProblema { get; set; }
@@ -271,7 +276,7 @@ namespace BuscaDeJogosLocais
         {
             get
             {
-                if (!ExisteEmDisco) return "Pasta inacessível";
+                if (!ExisteEmDisco) return Removivel ? "Disco desconectado" : "Pasta inacessível";
                 if (TotalSubpastas == 0) return "Pasta vazia";
                 if (NaBiblioteca == 0) return "Nada importado";
                 if (NaoImportados == 0 && ComProblema == 0) return "Tudo importado";
@@ -317,7 +322,9 @@ namespace BuscaDeJogosLocais
         // O ícone do próprio executável do emulador. Fica como object para este arquivo não
         // precisar de System.Drawing nem de WPF no tipo — quem preenche é o plugin.
         private object icone;
-        public object Icone { get { return icone; } set { SetValue(ref icone, value); } }
+        [DontSerialize]
+        public object Icone { get { return icone; } set { SetValue(ref icone, value); OnPropertyChanged("TemIcone"); } }
+        [DontSerialize]
         public bool TemIcone { get { return icone != null; } }
 
         public List<EmuladorJogoItem> Itens { get; set; }
@@ -570,6 +577,20 @@ namespace BuscaDeJogosLocais
 
         private ObservableCollection<DuplicateRemovalLogEntry> historicoDuplicatasRemovidas = new ObservableCollection<DuplicateRemovalLogEntry>();
         public ObservableCollection<DuplicateRemovalLogEntry> HistoricoDuplicatasRemovidas { get { return historicoDuplicatasRemovidas; } set { SetValue(ref historicoDuplicatasRemovidas, value); } }
+
+        // Pastas monitoradas que moram em disco REMOVÍVEL (HD externo). Quando a raiz não está
+        // presente, os jogos dela não são "pasta ausente": são "disco desconectado", e nada os
+        // marca como desinstalados nem os oferece para remoção.
+        private ObservableCollection<string> pastasRemoviveis = new ObservableCollection<string>();
+        public ObservableCollection<string> PastasRemoviveis { get { return pastasRemoviveis; } set { SetValue(ref pastasRemoviveis, value); } }
+
+        // A última leitura da aba Emuladores, para a aba abrir com o que se sabia em vez de
+        // vazia. A leitura varre as pastas de ROM inteiras, então não roda na abertura.
+        private List<EmuladorResumo> emuladoresCache;
+        public List<EmuladorResumo> EmuladoresCache { get { return emuladoresCache; } set { SetValue(ref emuladoresCache, value); } }
+
+        private string emuladoresUltimaLeitura;
+        public string EmuladoresUltimaLeitura { get { return emuladoresUltimaLeitura; } set { SetValue(ref emuladoresUltimaLeitura, value); } }
     }
 
     public class BuscaDeJogosLocaisSettingsViewModel : ObservableObject, ISettings
@@ -751,6 +772,8 @@ namespace BuscaDeJogosLocais
         // Onde o auxiliar da atualização registra o que fez — é o que explica uma troca que não pegou.
         public RelayCommand<object> AbrirLogAtualizacaoCommand { get; private set; }
         public RelayCommand<object> AbrirPastaDosLogsCommand { get; private set; }
+        public RelayCommand<object> AlternarRemovivelCommand { get; private set; }
+        public RelayCommand<object> RemoverPastaCommand { get; private set; }
 
         public string UltimoScanTexto
         {
@@ -769,6 +792,7 @@ namespace BuscaDeJogosLocais
             PastasResumo = new ObservableCollection<PastaResumo>();
             Emuladores = new ObservableCollection<EmuladorResumo>();
             this.plugin = plugin;
+            emuladoresCarregadosDoCache = false;
             var savedSettings = plugin.LoadPluginSettings<BuscaDeJogosLocaisSettings>();
             if (savedSettings != null)
             {
@@ -785,6 +809,7 @@ namespace BuscaDeJogosLocais
             if (Settings.HistoricoDesinstalacoes == null) Settings.HistoricoDesinstalacoes = new ObservableCollection<UninstallLogEntry>();
             if (Settings.HistoricoDuplicatasRemovidas == null) Settings.HistoricoDuplicatasRemovidas = new ObservableCollection<DuplicateRemovalLogEntry>();
             if (Settings.PadroesSave == null) Settings.PadroesSave = new ObservableCollection<string>();
+            if (Settings.PastasRemoviveis == null) Settings.PastasRemoviveis = new ObservableCollection<string>();
             if (Settings.PadroesSave.Count == 0)
             {
                 foreach (var p in LocalGameUtils.DefaultSavePatterns) Settings.PadroesSave.Add(p);
@@ -1178,6 +1203,40 @@ namespace BuscaDeJogosLocais
 
             AtualizarResumoPastasCommand = new RelayCommand<object>((_) => CarregarTelaEmSegundoPlano());
 
+            // Liga/desliga "disco removível" na linha da tabela. A caixa já mudou o Removivel do
+            // resumo pelo binding; aqui é só refletir na lista gravada e recontar.
+            AlternarRemovivelCommand = new RelayCommand<object>((param) =>
+            {
+                var resumo = param as PastaResumo;
+                if (resumo == null || string.IsNullOrEmpty(resumo.Caminho)) return;
+                var lista = Settings.PastasRemoviveis;
+                var existente = lista.FirstOrDefault(p => LocalGameUtils.EhMesmaPasta(p, resumo.Caminho));
+                if (resumo.Removivel && existente == null) lista.Add(resumo.Caminho);
+                if (!resumo.Removivel && existente != null) lista.Remove(existente);
+                CarregarTelaEmSegundoPlano();
+            });
+
+            // Tira a pasta da lista de monitoradas. Não toca em jogo nenhum: o que já foi
+            // importado continua na biblioteca, só deixa de ser conferido por esta tela.
+            RemoverPastaCommand = new RelayCommand<object>((param) =>
+            {
+                var resumo = param as PastaResumo;
+                if (resumo == null || string.IsNullOrEmpty(resumo.Caminho)) return;
+                var alvo = Settings.Pastas.FirstOrDefault(p => LocalGameUtils.EhMesmaPasta(p, resumo.Caminho));
+                if (alvo == null) return;
+
+                if (plugin.PlayniteApi.Dialogs.ShowMessage(
+                        string.Format("Deixar de monitorar {0}?\n\nOs jogos já importados continuam na biblioteca; a pasta só deixa de ser varrida e conferida.", alvo),
+                        "Confirmar", System.Windows.MessageBoxButton.YesNo) != System.Windows.MessageBoxResult.Yes)
+                    return;
+
+                Settings.Pastas.Remove(alvo);
+                var rem = Settings.PastasRemoviveis.FirstOrDefault(p => LocalGameUtils.EhMesmaPasta(p, alvo));
+                if (rem != null) Settings.PastasRemoviveis.Remove(rem);
+                OnPropertyChanged("OpcoesPastas");
+                CarregarTelaEmSegundoPlano();
+            });
+
             VerJogosDaPastaCommand = new RelayCommand<object>((param) =>
             {
                 var resumo = param as PastaResumo;
@@ -1234,6 +1293,12 @@ namespace BuscaDeJogosLocais
 
                 foreach (var emulador in lidos) Emuladores.Add(emulador);
 
+                // Guarda a leitura para a próxima abertura da aba, e grava na hora — pela barra
+                // lateral não há OK, e pela janela o EndEdit também grava.
+                Settings.EmuladoresCache = lidos;
+                Settings.EmuladoresUltimaLeitura = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+                try { plugin.SavePluginSettings(Settings); } catch (Exception ex) { logger.Error(ex, "Falha ao gravar o cache dos emuladores."); }
+
                 if (lidos.Count == 0)
                 {
                     EmuladoresResumoTexto =
@@ -1259,7 +1324,7 @@ namespace BuscaDeJogosLocais
                         semPasta);
                 }
 
-                EmuladoresResumoTexto = texto;
+                EmuladoresResumoTexto = "Lido em " + Settings.EmuladoresUltimaLeitura + " · " + texto;
             });
 
             VerJogosDoEmuladorCommand = new RelayCommand<object>((param) =>
@@ -1376,6 +1441,9 @@ namespace BuscaDeJogosLocais
                         {
                             exeAntigoCompleto = plugin.PlayniteApi.ExpandGameVariables(game, fileAction.Path);
                         }
+
+                        // HD externo fora da máquina: o jogo não sumiu, o disco é que não está aqui.
+                        if (plugin.DiscoRemovivelDesconectado(game.InstallDirectory)) continue;
 
                         bool pastaSumiu = !string.IsNullOrEmpty(game.InstallDirectory) &&
                                           !Directory.Exists(game.InstallDirectory);
@@ -1568,6 +1636,9 @@ namespace BuscaDeJogosLocais
                 return ok;
             };
 
+            var removiveis = Settings.PastasRemoviveis == null ? new List<string>() : Settings.PastasRemoviveis.ToList();
+            Func<string, bool> EhRemovivel = (p) => removiveis.Any(rem => LocalGameUtils.EhMesmaPasta(rem, p));
+
             foreach (var pasta in pastasMonitoradas)
             {
                 if (!Existe(pasta)) raizesAusentes.Add(pasta);
@@ -1587,8 +1658,10 @@ namespace BuscaDeJogosLocais
                 {
                     Caminho = pasta,
                     ExisteEmDisco = Existe(pasta),
+                    Removivel = EhRemovivel(pasta),
                     Itens = new List<PastaJogoItem>()
                 };
+                bool desconectado = resumo.DiscoDesconectado;
 
                 var jogosDaPasta = jogosLocais
                     .Where(g => LocalGameUtils.IsUnderFolder(g.InstallDirectory, pasta))
@@ -1600,7 +1673,10 @@ namespace BuscaDeJogosLocais
                     vinculados.Add(plugin.NormalizePath(jogo.InstallDirectory));
 
                     bool pastaSumiu = !Existe(jogo.InstallDirectory);
-                    if (pastaSumiu) resumo.ComProblema++; else resumo.NaBiblioteca++;
+                    // Disco removível fora: o jogo continua contando como "na biblioteca" — ele
+                    // está lá, só não está plugado. Não é problema e não é ausência.
+                    string status = desconectado ? "Disco desconectado" : (pastaSumiu ? "Pasta ausente" : "Na biblioteca");
+                    if (status == "Pasta ausente") resumo.ComProblema++; else resumo.NaBiblioteca++;
 
                     resumo.Itens.Add(new PastaJogoItem
                     {
@@ -1609,7 +1685,7 @@ namespace BuscaDeJogosLocais
                         NomePasta = SafeFolderName(jogo.InstallDirectory),
                         Caminho = jogo.InstallDirectory,
                         Versao = jogo.Version,
-                        Status = pastaSumiu ? "Pasta ausente" : "Na biblioteca"
+                        Status = status
                     });
                 }
 
@@ -1648,6 +1724,7 @@ namespace BuscaDeJogosLocais
             var orfaos = jogosLocais
                 .Where(g => !pastasMonitoradas.Any(p => LocalGameUtils.IsUnderFolder(g.InstallDirectory, p)))
                 .ToList();
+            int discosFora = r.Pastas.Count(p => p.DiscoDesconectado);
 
             if (orfaos.Count > 0)
             {
@@ -1679,6 +1756,7 @@ namespace BuscaDeJogosLocais
                 r.Pastas.Sum(p => p.ComProblema),
                 r.Pastas.Sum(p => p.Ignorados),
                 pastasMonitoradas.Count);
+            if (discosFora > 0) r.Texto += string.Format(" {0} disco(s) removível(is) desconectado(s) — os jogos deles não contam como ausentes.", discosFora);
 
             cronometro.Stop();
             r.Milissegundos = cronometro.ElapsedMilliseconds;
@@ -1753,7 +1831,7 @@ namespace BuscaDeJogosLocais
             TotalForaDaBiblioteca = PastasResumo.Sum(p => p.NaoImportados);
             TotalComPastaAusente = PastasResumo.Sum(p => p.ComProblema);
             TotalPastasMonitoradas = Settings.Pastas == null ? 0 : Settings.Pastas.Count;
-            TotalPastasInacessiveis = PastasResumo.Count(p => !p.ExisteEmDisco);
+            TotalPastasInacessiveis = PastasResumo.Count(p => !p.ExisteEmDisco && !p.Removivel);
 
             // O texto diz o que fazer, não só o que existe. "3 jogos com pasta ausente" sem o
             // próximo passo é o que fazia a pessoa ir direto para "marcar como desinstalado".
@@ -1884,6 +1962,34 @@ namespace BuscaDeJogosLocais
             RecalcularEstatisticas();
             CarregarJogosDaBiblioteca();
             OnPropertyChanged("OpcoesPastas");
+            RestaurarEmuladoresDoCache();
+        }
+
+        private bool emuladoresCarregadosDoCache;
+
+        // A aba Emuladores abre com a última leitura gravada, datada, em vez de vazia. Os
+        // ícones não são gravados (são bitmaps); voltam do executável, que é barato.
+        public void RestaurarEmuladoresDoCache()
+        {
+            if (emuladoresCarregadosDoCache) return;
+            emuladoresCarregadosDoCache = true;
+            if (Emuladores.Count > 0) return;
+            var cache = Settings.EmuladoresCache;
+            if (cache == null || cache.Count == 0)
+            {
+                EmuladoresResumoTexto = "Ainda não lido. Clique em \"Atualizar\" para ler os emuladores configurados.";
+                return;
+            }
+            foreach (var e in cache)
+            {
+                if (e.Itens == null) e.Itens = new List<EmuladorJogoItem>();
+                try { e.Icone = plugin.IconeDoEmulador(e.Executavel, e.ExecutavelExiste); } catch (Exception) { }
+                Emuladores.Add(e);
+            }
+            EmuladoresResumoTexto = string.Format(
+                "Última leitura em {0}: {1} emulador(es) · {2} arquivo(s) nas pastas de varredura · {3} fora da biblioteca. Clique em \"Atualizar\" para reler.",
+                string.IsNullOrEmpty(Settings.EmuladoresUltimaLeitura) ? "—" : Settings.EmuladoresUltimaLeitura,
+                cache.Count, cache.Sum(x => x.TotalArquivos), cache.Sum(x => x.ForaDaBiblioteca));
         }
 
         public void BeginEdit()

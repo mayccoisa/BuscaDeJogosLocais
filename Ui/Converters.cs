@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
@@ -150,6 +150,9 @@ namespace BuscaDeJogosLocais.Ui
                 s.IndexOf("Sem save", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 s.IndexOf("Já na Biblioteca", StringComparison.OrdinalIgnoreCase) >= 0)
                 return UiKit.Brush("GreenBrush");
+
+            if (s.IndexOf("Desconectado", StringComparison.OrdinalIgnoreCase) >= 0)
+                return UiKit.Brush("GoldBrush");
 
             if (s.IndexOf("Provável", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 s.IndexOf("Parcialmente", StringComparison.OrdinalIgnoreCase) >= 0 ||

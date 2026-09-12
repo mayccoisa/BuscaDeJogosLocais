@@ -553,6 +553,25 @@ class RegressionTests
             !sub.Contains(LocalGameUtils.NormalizePath(@"D:\Roms\PS1\Outro.chd")));
         Check("leitor que falha nao derruba a regra",
             LocalGameUtils.ArquivosSubordinados(arquivosCd, (c) => null).Count == 0);
+
+        // Sufixo de site e hifen como separador: era o nome que ia para a busca de metadados,
+        // e "Split-Fiction-Steamrip Com" nunca acha o jogo certo.
+        Console.WriteLine();
+        Console.WriteLine("[CleanGameName - site]");
+        Check("sufixo -SteamRIP.com sai e hifen vira espaco",
+            LocalGameUtils.CleanGameNameOnly("Split-Fiction-SteamRIP.com") == "Split Fiction");
+        Check("The-Plucky-Squire-SteamRIP.com",
+            LocalGameUtils.CleanGameNameOnly("The-Plucky-Squire-SteamRIP.com") == "The Plucky Squire");
+        Check("The-Casting-of-Frank-Stone-SteamRIP.com",
+            LocalGameUtils.CleanGameNameOnly("The-Casting-of-Frank-Stone-SteamRIP.com") == "The Casting of Frank Stone");
+        Check("colchete de repack sai",
+            LocalGameUtils.CleanGameNameOnly("Hades II [FitGirl Repack]") == "Hades II");
+        Check("Half-Life continua com hifen (um hifen, sem site)",
+            LocalGameUtils.CleanGameNameOnly("Half-Life") == "Half-Life");
+        Check("PAC-MAN World 2 continua com hifen (tem espaco)",
+            LocalGameUtils.CleanGameNameOnly("PAC-MAN World 2").Contains("-"));
+        Check("tres hifens sem outro separador vira espaco",
+            LocalGameUtils.CleanGameNameOnly("Sword-of-the-Sea") == "Sword of the Sea");
         Check("arquivo sem extensao nao conta",
             !LocalGameUtils.EhArquivoDeRom(@"D:\Roms\N64\LEIAME", null));
         Check("caminho vazio nao conta",

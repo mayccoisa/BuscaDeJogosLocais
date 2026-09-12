@@ -6,6 +6,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.12.0] - 2026-09-12
+
+### Adicionado
+- **A aba Emuladores abre com a última leitura.** O que o botão "Atualizar" lê fica gravado e volta na próxima abertura, com a data no cabeçalho ("Última leitura em …"). Antes a aba abria vazia toda vez e pedia um clique para mostrar o que já se sabia.
+- **Disco removível.** Na tabela de pastas monitoradas há uma caixa "Disco removível" por pasta, para HD externo que entra e sai. Com o disco fora, a pasta aparece como **"Disco desconectado"** e os jogos dela continuam contando como "na biblioteca": não viram "pasta ausente", não entram em "Jogos que sumiram" nem na verificação de integridade, e nada os oferece para desinstalar ou remover. Plugou o disco, atualizou, tudo volta ao normal.
+- **Botão "Remover"** em cada pasta monitorada, com confirmação. A pasta deixa de ser varrida e conferida; os jogos já importados continuam na biblioteca.
+
+### Corrigido
+- **Metadados vinham do jogo errado.** O nome que vai para a busca (IGDB etc.) é o nome limpo da pasta, e pasta de site de download ("Split-Fiction-SteamRIP.com", "The-Plucky-Squire-SteamRIP.com") saía como "Split-Fiction-Steamrip Com" — nome que nenhuma fonte encontra, ou encontra outra coisa. A limpeza agora tira o sufixo de site, o colchete de repack ("[FitGirl Repack]") e, quando o hífen é o único separador, troca por espaço. "Half-Life" e "PAC-MAN World 2" continuam com hífen. Jogos já importados com o nome errado: use "Limpar nomes" em Ajustes, ou edite o nome e rode o download de metadados do Playnite.
+
+---
+
 ## [0.11.3] - 2026-09-12
 
 ### Corrigido

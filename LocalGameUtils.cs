@@ -341,6 +341,17 @@ namespace BuscaDeJogosLocais
             "x64", "x86", "win64", "win32", "pcdvd", "iso", "full", "final", "retail"
         };
 
+        // Sufixo de SITE colado no nome ("Split-Fiction-SteamRIP.com", "Jogo [FitGirl Repack]").
+        // Não é grupo de release (tem ponto) e não é ruído de fim (tem hífen antes), então
+        // escapava das duas regras e o nome saía "Split-Fiction-Steamrip Com" — e é esse nome
+        // que vai para a busca de metadados, que devolve o jogo errado ou nenhum.
+        private static readonly Regex SiteSuffixRegex = new Regex(
+            @"[\s._-]*(?:steamrip|gog-games|gog\.games|dodi-repacks|fitgirl-repacks|elamigos|online-fix|ova-games|igg-games|steamunlocked|repack-games|ankergames|gamedrive|torrminatorr)(?:\.[a-z]{2,6})?\s*$",
+            RegexOptions.IgnoreCase);
+        private static readonly Regex BracketNoiseRegex = new Regex(
+            @"\s*[\[(](?:[^\])]*(?:repack|fitgirl|dodi|elamigos|multi\d*|steamrip|rip|crack|portable|gog)[^\])]*)[\])]\s*",
+            RegexOptions.IgnoreCase);
+
         private static readonly Regex VersionRegex =
             new Regex(@"(?:^|[._\s-])v(\d+(?:\.\d+)*[a-z]?)(?![a-z0-9])", RegexOptions.IgnoreCase);
         private static readonly Regex BuildRegex =
@@ -402,8 +413,21 @@ namespace BuscaDeJogosLocais
             }
             if (corte > 0) nome = nome.Substring(0, corte);
 
-            // 2. Grupo de release colado no fim ("-GoldBerg"), quando não havia versão pra cortar.
+            // 2. Grupo de release colado no fim ("-GoldBerg"), quando não havia versão pra cortar;
+            //    e sufixo de site ("-SteamRIP.com") ou colchete de repack ("[FitGirl Repack]").
+            bool tinhaSite = false;
+            var semColchete = BracketNoiseRegex.Replace(nome, " ");
+            if (semColchete != nome) { nome = semColchete; tinhaSite = true; }
+            var semSite = SiteSuffixRegex.Replace(nome, string.Empty);
+            if (semSite != nome && semSite.Trim().Length > 0) { nome = semSite; tinhaSite = true; }
             nome = StripReleaseGroup(nome);
+
+            // 2b. Nome só com hífen como separador ("The-Plucky-Squire"): é o padrão de site de
+            //     download, e o hífen ali é espaço. Só quando não há outro separador, para não
+            //     tocar em "PAC-MAN World 2" nem "Half-Life".
+            bool soHifen = nome.IndexOf(' ') < 0 && nome.IndexOf('.') < 0 && nome.IndexOf('_') < 0;
+            int hifens = nome.Count(c => c == '-');
+            if (soHifen && (hifens >= 2 || (tinhaSite && hifens >= 1))) nome = nome.Replace('-', ' ');
 
             // 3. Separadores: ponto e underscore viram espaço, preservando siglas ("S.T.A.L.K.E.R.").
             nome = AcronymRegex.Replace(nome, delegate(Match m) { return m.Value.Replace('.', AcronymDotMarker); });

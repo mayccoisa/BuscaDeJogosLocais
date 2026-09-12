@@ -103,6 +103,9 @@ namespace BuscaDeJogosLocais
                         case "Pasta ausente":
                             item.Motivo = string.Format("A pasta {0} não existe mais. Se foi apagada de propósito, marque como desinstalado ou remova; se mudou de lugar, use a aba \"Jogos que sumiram\".", item.Caminho);
                             break;
+                        case "Disco desconectado":
+                            item.Motivo = "A pasta está num disco removível que não está conectado agora. Nada a fazer: plugue o disco e atualize.";
+                            break;
                         case "Ignorado":
                             item.Motivo = "Um executável desta pasta está na lista de ignorados (Ajustes). Tire de lá para a busca voltar a considerá-la.";
                             break;

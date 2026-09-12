@@ -1,4 +1,4 @@
-<UserControl x:Class="BuscaDeJogosLocais.Ui.PastasPage"
+﻿<UserControl x:Class="BuscaDeJogosLocais.Ui.PastasPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -76,7 +76,21 @@
                 <DataGridTextColumn Header="Com problema" Binding="{Binding ComProblema}" Width="115" />
                 <DataGridTextColumn Header="Ignorados" Binding="{Binding Ignorados}" Width="90" />
 
-                <DataGridTemplateColumn Header="" Width="200" CanUserSort="False">
+                <!-- HD externo que entra e sai: com a caixa marcada, o disco ausente vira
+                     "Disco desconectado" e nada trata os jogos dele como sumidos. -->
+                <DataGridTemplateColumn Header="Disco removível" Width="120" CanUserSort="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding Removivel, UpdateSourceTrigger=PropertyChanged}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      ToolTip="Marque se esta pasta fica num HD externo que você tira e coloca. Com o disco fora, os jogos dela não são tratados como ausentes."
+                                      Command="{Binding DataContext.AlternarRemovivelCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                      CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTemplateColumn Header="" Width="270" CanUserSort="False">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
@@ -90,6 +104,11 @@
                                         Content="Abrir pasta"
                                         ToolTip="Abre esta pasta no Explorador do Windows."
                                         Command="{Binding DataContext.AbrirPastaCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}" />
+                                <Button Style="{StaticResource CellButton}" Margin="6,0,0,0"
+                                        Content="Remover"
+                                        ToolTip="Deixa de monitorar esta pasta. Os jogos já importados continuam na biblioteca."
+                                        Command="{Binding DataContext.RemoverPastaCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                         CommandParameter="{Binding}" />
                             </StackPanel>
                         </DataTemplate>
