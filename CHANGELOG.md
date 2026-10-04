@@ -6,7 +6,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
-## [0.13.0] - 2026-10-04
+## [0.13.1] - 2026-10-04
+
+> A 0.13.0 nunca foi publicada (a compilação da versão falhou); estas são as mudanças dela.
 
 ### Removido
 - **A extensão não baixa mais capa e metadados por conta própria**, e a opção "Baixar metadados dos jogos logo após importar" saiu de Ajustes. Ela consultava as fontes instaladas uma a uma e gravava a primeira capa que viesse, sem a prioridade que você configura no Playnite: quando o IGDB não achava o nome exato, outra fonte devolvia um jogo parecido, a capa errada entrava e tudo parecia ter dado certo.
