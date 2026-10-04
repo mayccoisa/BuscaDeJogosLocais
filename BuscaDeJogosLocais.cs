@@ -253,7 +253,9 @@ namespace BuscaDeJogosLocais
                 resultados,
                 importar: (selecionados) =>
                 {
-                    BaixarMetadadosDosImportados(ImportarLote(selecionados));
+                    var ids = ImportarLote(selecionados);
+                    SelecionarNaBiblioteca(ids);
+                    return ids;
                 },
                 ignorar: (jogo) => AdicionarExcluido(jogo),
                 reapontar: (movidos) => ReapontarLote(movidos)
@@ -295,9 +297,11 @@ namespace BuscaDeJogosLocais
                 window.Content = new ScanResultWindow(
                     new ObservableCollection<ScannedGame>(novos),
                     importar: (selecionados) =>
-                    {
-                        BaixarMetadadosDosImportados(ImportarLote(selecionados));
-                    },
+                {
+                    var ids = ImportarLote(selecionados);
+                    SelecionarNaBiblioteca(ids);
+                    return ids;
+                },
                     ignorar: (jogo) => AdicionarExcluido(jogo),
                     reapontar: (movidos) => ReapontarLote(movidos)
                 );
@@ -819,90 +823,33 @@ namespace BuscaDeJogosLocais
         }
 
         /// <summary>
-        /// Roda o download de metadados (capa, ícone, fundo, descrição, gêneros...) nos jogos recém-importados,
-        /// usando as fontes de metadados instaladas no Playnite. Respeita a opção da tela de configurações
-        /// e nunca sobrescreve campo que o jogo já tenha preenchido.
+        /// Deixa os jogos recém-importados selecionados na biblioteca, para o "Baixar metadados…"
+        /// do próprio Playnite rodar sobre eles.
+        ///
+        /// A extensão não baixa capa por conta própria. Até a 0.12.0 ela consultava cada fonte
+        /// instalada e gravava a primeira capa que viesse: sem a prioridade por campo que o usuário
+        /// configura no Playnite (o SDK não a expõe), o IGDB devolvia vazio quando não tinha certeza
+        /// do título, a fonte seguinte (Xbox) devolvia um jogo parecido, e a capa errada entrava
+        /// como sucesso. O download nativo é o caminho que acerta, e a extensão só prepara o terreno.
         /// </summary>
-        public void BaixarMetadadosDosImportados(List<Guid> gameIds, bool forcar = false)
+        public void SelecionarNaBiblioteca(List<Guid> gameIds)
         {
-            if (!forcar && !settings.Settings.BaixarMetadadosAposImportar) return;
             if (gameIds == null || gameIds.Count == 0) return;
-
-            var downloader = new MetadataDownloader(PlayniteApi);
-            if (!downloader.HasProviders)
+            try
             {
-                logger.Warn("Nenhuma fonte de metadados instalada no Playnite; download pós-importação ignorado.");
-                PlayniteApi.Dialogs.ShowMessage(
-                    "Os jogos foram importados, mas nenhuma fonte de metadados está instalada no Playnite (ex: IGDB).\n\n" +
-                    "Instale uma fonte em Add-ons para que a capa e os metadados sejam baixados automaticamente.",
-                    "Metadados");
-                return;
+                PlayniteApi.MainView.SelectGames(gameIds);
             }
-
-            int atualizados = RodarDownloadMetadados(downloader, gameIds, false);
-            logger.Info(string.Format("Metadados preenchidos em {0} de {1} jogo(s).", atualizados, gameIds.Count));
-
-            // Passada 1 é auto-match silencioso: o provedor devolve vazio quando não tem certeza do
-            // título. Quem sobrou sem capa só resolve no modo manual, o mesmo da janela de edição —
-            // e esse pode abrir uma janela por jogo, então é escolha do usuário, nunca automático.
-            var semCapa = gameIds
-                .Select(id => PlayniteApi.Database.Games.Get(id))
-                .Where(g => g != null && string.IsNullOrEmpty(g.CoverImage))
-                .Select(g => g.Id)
-                .ToList();
-
-            if (semCapa.Count == 0) return;
-
-            var pergunta = string.Format(
-                "{0} jogo(s) continuaram sem capa: as fontes não encontraram correspondência automática para o título.\n\n" +
-                "Quer tentar de novo no modo manual? É o mesmo modo do \"Download metadata\" do Playnite, em que a fonte pode abrir uma janela para você escolher o jogo certo.",
-                semCapa.Count);
-
-            if (PlayniteApi.Dialogs.ShowMessage(pergunta, "Metadados", System.Windows.MessageBoxButton.YesNo)
-                != System.Windows.MessageBoxResult.Yes) return;
-
-            int manuais = RodarDownloadMetadados(downloader, semCapa, true);
-            logger.Info(string.Format("Metadados manuais preenchidos em {0} de {1} jogo(s).", manuais, semCapa.Count));
-        }
-
-        private int RodarDownloadMetadados(MetadataDownloader downloader, List<Guid> gameIds, bool interativo)
-        {
-            int atualizados = 0;
-
-            PlayniteApi.Dialogs.ActivateGlobalProgress((progressArgs) =>
+            catch (Exception ex)
             {
-                progressArgs.ProgressMaxValue = gameIds.Count;
-
-                // Um refresh de biblioteca só no fim; o usuário acompanha pela barra de progresso.
-                using (PlayniteApi.Database.BufferedUpdate())
-                {
-                    foreach (var id in gameIds)
-                    {
-                        if (progressArgs.CancelToken.IsCancellationRequested) break;
-
-                        var jogo = PlayniteApi.Database.Games.Get(id);
-                        progressArgs.Text = jogo != null
-                            ? string.Format("Baixando metadados: {0}", jogo.Name)
-                            : "Baixando metadados...";
-
-                        try
-                        {
-                            if (downloader.Download(id, progressArgs.CancelToken, interativo)) atualizados++;
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.Error(ex, string.Format("Falha ao baixar metadados do jogo {0}.", id));
-                        }
-
-                        progressArgs.CurrentProgressValue++;
-                    }
-                }
-            }, new GlobalProgressOptions(
-                interativo ? "Buscando metadados (modo manual)..." : "Baixando metadados dos jogos...", true)
-            { IsIndeterminate = false });
-
-            return atualizados;
+                logger.Error(ex, "Não foi possível selecionar os jogos importados na biblioteca.");
+            }
         }
+
+        /// <summary>O passo que falta depois de importar ou renomear: o download de metadados do Playnite.</summary>
+        public const string AvisoBaixarMetadados =
+            "Eles ficaram selecionados na biblioteca. Para trazer capa e metadados, use \"Baixar metadados…\" no menu principal do Playnite " +
+            "e escolha \"Todos os jogos selecionados\". Jogo cuja capa não vier: clique com o botão direito › Editar… › Baixar metadados, " +
+            "onde dá para escolher o jogo certo.";
 
         /// <summary>
         /// Abre uma pasta no Explorador, ou explica por que não deu.
@@ -1474,26 +1421,22 @@ namespace BuscaDeJogosLocais
             window.Width = 950;
             window.Height = 600;
             window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
-            // A renomeação grava na hora; a busca de metadados só roda DEPOIS que a modal fecha,
-            // senão a barra de progresso e os diálogos da fonte nascem atrás da janela.
+            // A renomeação grava na hora; o aviso só aparece DEPOIS que a modal fecha,
+            // senão o diálogo nasce atrás da janela.
             var renomeados = new List<Guid>();
             window.Content = new RenamePreviewWindow(itens, (selecionados) => renomeados.AddRange(AplicarRenomeacoes(selecionados)));
             window.ShowDialog();
 
             if (renomeados.Count == 0) return;
 
-            var resposta = PlayniteApi.Dialogs.ShowMessage(
-                string.Format("{0} jogo(s) atualizados.\n\nQuer buscar capa e metadados agora para esses jogos, com o nome já corrigido?", renomeados.Count),
-                "Limpar Nomes", System.Windows.MessageBoxButton.YesNo);
-
-            if (resposta == System.Windows.MessageBoxResult.Yes)
-            {
-                BaixarMetadadosDosImportados(renomeados, true);
-            }
+            SelecionarNaBiblioteca(renomeados);
+            PlayniteApi.Dialogs.ShowMessage(
+                string.Format("{0} jogo(s) renomeados.\n\n{1}", renomeados.Count, AvisoBaixarMetadados),
+                "Limpar Nomes");
         }
 
         // Grava as renomeações confirmadas na prévia. Só toca no que o usuário deixou marcado.
-        // Devolve os ids efetivamente alterados, para a busca de metadados rodar depois.
+        // Devolve os ids efetivamente alterados, para selecioná-los na biblioteca depois.
         private List<Guid> AplicarRenomeacoes(List<RenameItem> selecionados)
         {
             var alterados = new List<Guid>();

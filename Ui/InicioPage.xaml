@@ -95,7 +95,7 @@
                 <StackPanel>
                     <TextBlock Style="{StaticResource SectionTitle}" Text="O que fazer daqui" />
                     <TextBlock Style="{StaticResource HintText}"
-                               Text="Busca e importação procura jogos novos nas suas pastas. Jogos que sumiram cuida do que mudou de lugar. Duplicados encontra a mesma instalação repetida. Ajustes decide como o nome, a versão e os metadados entram." />
+                               Text="Busca e importação procura jogos novos nas suas pastas. Jogos que sumiram cuida do que mudou de lugar. Duplicados encontra a mesma instalação repetida. Ajustes decide como o nome e a versão entram." />
                     <Border Style="{StaticResource Separator}" />
                     <TextBlock Style="{StaticResource MutedText}" Text="{Binding VersaoInstaladaTexto}" />
                 </StackPanel>

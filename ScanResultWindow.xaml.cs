@@ -18,7 +18,7 @@ namespace BuscaDeJogosLocais
         }
 
         private ObservableCollection<ScannedGame> resultados;
-        private Action<List<ScannedGame>> onImportar;
+        private Func<List<ScannedGame>, List<Guid>> onImportar;
         private Action<ScannedGame> onIgnorar;
         private Action<List<ScannedGame>> onReapontar;
 
@@ -67,7 +67,7 @@ namespace BuscaDeJogosLocais
         }
 
         public ScanResultWindow(ObservableCollection<ScannedGame> resultados,
-            Action<List<ScannedGame>> importar,
+            Func<List<ScannedGame>, List<Guid>> importar,
             Action<ScannedGame> ignorar,
             Action<List<ScannedGame>> reapontar)
         {
@@ -127,12 +127,24 @@ namespace BuscaDeJogosLocais
                 return;
             }
 
-            if (onImportar != null) onImportar(selecionados);
+            var ids = onImportar != null ? onImportar(selecionados) : null;
+            int importados = ids != null ? ids.Count : 0;
 
             ResultadosView.Refresh();
             Notify("ContagemTexto");
 
-            MessageBox.Show(string.Format("{0} jogo(s) importado(s) com sucesso!", selecionados.Count), "Sucesso", MessageBoxButton.OK, MessageBoxImage.Information);
+            // A contagem é a do que entrou de fato no banco, não a do que estava marcado: anunciar
+            // os marcados era o que dava "sucesso" para jogo que a importação recusou.
+            if (importados == 0)
+            {
+                MessageBox.Show("Nenhum jogo foi importado. O motivo mais comum é já existir um jogo apontando para a mesma pasta.", "Nada importado", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var resumo = importados == selecionados.Count
+                ? string.Format("{0} jogo(s) importado(s).", importados)
+                : string.Format("{0} de {1} jogo(s) importado(s). Os outros já tinham um jogo apontando para a mesma pasta.", importados, selecionados.Count);
+            MessageBox.Show(resumo + "\n\n" + BuscaDeJogosLocais.AvisoBaixarMetadados, "Importação", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void OnFecharClick(object sender, RoutedEventArgs e)

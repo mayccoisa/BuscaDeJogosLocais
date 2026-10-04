@@ -6,6 +6,19 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.13.0] - 2026-10-04
+
+### Removido
+- **A extensão não baixa mais capa e metadados por conta própria**, e a opção "Baixar metadados dos jogos logo após importar" saiu de Ajustes. Ela consultava as fontes instaladas uma a uma e gravava a primeira capa que viesse, sem a prioridade que você configura no Playnite: quando o IGDB não achava o nome exato, outra fonte devolvia um jogo parecido, a capa errada entrava e tudo parecia ter dado certo.
+
+### Alterado
+- **Depois de importar (ou de "Limpar nomes"), os jogos ficam selecionados na biblioteca** e uma mensagem indica o "Baixar metadados…" do próprio Playnite, com a opção "Todos os jogos selecionados". É o download nativo, que respeita as suas fontes e a prioridade de cada campo. Jogo cuja capa não vier: botão direito › Editar… › Baixar metadados, onde dá para escolher o jogo certo.
+
+### Corrigido
+- **A mensagem de importação contava os jogos marcados, não os importados.** Agora ela mostra quantos entraram de fato ("3 de 5 importados") e avisa "Nada importado" quando a importação não criou nenhum jogo.
+
+---
+
 ## [0.12.0] - 2026-09-12
 
 ### Adicionado

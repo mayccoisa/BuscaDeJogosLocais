@@ -188,7 +188,10 @@ namespace BuscaDeJogosLocais
             item.Acao = string.Empty;
             resumo.NaoImportados = Math.Max(0, resumo.NaoImportados - 1);
             AtualizarResumo();
-            plugin.BaixarMetadadosDosImportados(ids);
+            plugin.SelecionarNaBiblioteca(ids);
+            plugin.PlayniteApi.Dialogs.ShowMessage(
+                string.Format("«{0}» importado.\n\n{1}", item.Nome, BuscaDeJogosLocais.AvisoBaixarMetadados),
+                "Importação");
         }
 
         private void Adotar(PastaJogoItem item)

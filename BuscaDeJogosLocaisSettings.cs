@@ -552,8 +552,6 @@ namespace BuscaDeJogosLocais
         private bool guardarVersaoDetectada = true;
         public bool GuardarVersaoDetectada { get { return guardarVersaoDetectada; } set { SetValue(ref guardarVersaoDetectada, value); } }
 
-        private bool baixarMetadadosAposImportar = true;
-        public bool BaixarMetadadosAposImportar { get { return baixarMetadadosAposImportar; } set { SetValue(ref baixarMetadadosAposImportar, value); } }
 
         private bool escanearAutomaticamente = false;
         public bool EscanearAutomaticamente { get { return escanearAutomaticamente; } set { SetValue(ref escanearAutomaticamente, value); } }
@@ -1137,10 +1135,16 @@ namespace BuscaDeJogosLocais
 
                 if (idsImportados.Count > 0)
                 {
-                    plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogos importados com sucesso!", idsImportados.Count), "Sucesso");
                     JogosEncontradosView.Refresh();
                     RecalcularEstatisticas();
-                    plugin.BaixarMetadadosDosImportados(idsImportados);
+                    plugin.SelecionarNaBiblioteca(idsImportados);
+                    plugin.PlayniteApi.Dialogs.ShowMessage(
+                        string.Format("{0} jogo(s) importado(s).\n\n{1}", idsImportados.Count, BuscaDeJogosLocais.AvisoBaixarMetadados),
+                        "Importação");
+                }
+                else
+                {
+                    plugin.PlayniteApi.Dialogs.ShowMessage("Nenhum jogo foi importado. O motivo mais comum é já existir um jogo apontando para a mesma pasta.", "Nada importado");
                 }
             });
 
