@@ -743,6 +743,102 @@ namespace BuscaDeJogosLocais
             return false;
         }
 
+        /// <summary>
+        /// Quantos dos caminhos estão dentro de 'pasta' e NÃO ficam cobertos por nenhuma das
+        /// pastas que continuam monitoradas. É o que a remoção de uma pasta deixaria sem dono:
+        /// caminho coberto por uma pasta-filha que continua na lista não conta.
+        /// Compara texto, não toca o disco.
+        /// </summary>
+        public static int ContarSemCobertura(IEnumerable<string> caminhos, string pasta, IEnumerable<string> pastasQueFicam)
+        {
+            if (caminhos == null || string.IsNullOrEmpty(pasta)) return 0;
+            var ficam = pastasQueFicam == null ? new List<string>() : pastasQueFicam.ToList();
+            int total = 0;
+            foreach (string caminho in caminhos)
+            {
+                if (!IsUnderFolder(caminho, pasta)) continue;
+                if (PastaMonitoradaDe(caminho, ficam) != null) continue;
+                total++;
+            }
+            return total;
+        }
+
+        /// <summary>
+        /// Outra pasta monitorada que contém 'pasta' (ela própria não conta). Quando existe,
+        /// remover 'pasta' não deixa jogo nenhum sem monitoramento.
+        /// </summary>
+        public static string PastaQueTambemCobre(string pasta, IEnumerable<string> outras)
+        {
+            if (string.IsNullOrEmpty(pasta) || outras == null) return null;
+            foreach (string outra in outras)
+            {
+                if (string.IsNullOrEmpty(outra) || EhMesmaPasta(outra, pasta)) continue;
+                if (IsUnderFolder(pasta, outra)) return outra;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// O texto do aviso antes de deixar de monitorar uma pasta. Cada linha só aparece quando
+        /// tem algo a dizer, para a pessoa ler o que muda de verdade e não um aviso genérico.
+        /// </summary>
+        public static string MontarAvisoRemocaoPasta(
+            string pasta, int jogosQueFicamFora, int jogosComPastaAusente, int naoImportados,
+            bool discoDesconectado, string coberturaDeOutraPasta, int registrosParaLimpar)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(string.Format("Deixar de monitorar {0}?", pasta));
+            sb.AppendLine();
+            sb.AppendLine("Nenhum jogo sai da biblioteca do Playnite.");
+
+            if (!string.IsNullOrEmpty(coberturaDeOutraPasta))
+            {
+                sb.AppendLine();
+                sb.AppendLine(string.Format("Esta pasta está dentro de {0}, que continua monitorada: os jogos dela continuam sendo conferidos.", coberturaDeOutraPasta));
+            }
+            else if (jogosQueFicamFora > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine(string.Format("{0} jogo(s) ficam FORA das pastas monitoradas: somem da lista desta pasta e deixam de ser conferidos. Se a pasta de um deles for apagada ou movida, a extensão não avisa mais nem oferece desinstalar ou reapontar.", jogosQueFicamFora));
+            }
+
+            if (jogosComPastaAusente > 0 && string.IsNullOrEmpty(coberturaDeOutraPasta))
+            {
+                sb.AppendLine();
+                sb.AppendLine(string.Format("Atenção: {0} desses jogos estão com a pasta ausente. Resolva-os antes (desinstalar, reapontar ou remover) — depois de remover a pasta, esta tela não os mostra mais.", jogosComPastaAusente));
+            }
+
+            if (discoDesconectado)
+            {
+                sb.AppendLine();
+                sb.AppendLine("O disco desta pasta está desconectado: os jogos dela não poderão ser conferidos até você monitorar a pasta de novo.");
+            }
+
+            if (naoImportados > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine(string.Format("{0} pasta(s) de jogo ainda não importadas deixam de ser encontradas pela busca.", naoImportados));
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("Também deixa de valer a marca de \"Disco removível\" desta pasta.");
+
+            if (registrosParaLimpar > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine(string.Format("Há {0} registro(s) desta pasta (jogos ignorados e datas de verificação).", registrosParaLimpar));
+                sb.AppendLine("  Sim: remover a pasta e limpar esses registros.");
+                sb.AppendLine("  Não: remover a pasta e manter os registros (voltam se você monitorar a pasta de novo).");
+                sb.AppendLine("  Cancelar: não fazer nada.");
+            }
+            else
+            {
+                sb.AppendLine();
+                sb.AppendLine("Para voltar a monitorar, use \"Adicionar pasta\".");
+            }
+            return sb.ToString().TrimEnd();
+        }
+
         public static bool EhMesmaPasta(string a, string b)
         {
             if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;

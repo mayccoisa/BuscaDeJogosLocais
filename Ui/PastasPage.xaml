@@ -90,7 +90,7 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <DataGridTemplateColumn Header="" Width="270" CanUserSort="False">
+                <DataGridTemplateColumn Header="" Width="Auto" MinWidth="300" CanUserSort="False">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">

@@ -1221,7 +1221,9 @@ namespace BuscaDeJogosLocais
             });
 
             // Tira a pasta da lista de monitoradas. Não toca em jogo nenhum: o que já foi
-            // importado continua na biblioteca, só deixa de ser conferido por esta tela.
+            // importado continua na biblioteca, só deixa de ser conferido por esta tela. Antes de
+            // confirmar, diz o que muda NESTA pasta (quantos jogos ficam sem conferência, quantos
+            // com pasta ausente, registros guardados) e oferece limpar os registros dela.
             RemoverPastaCommand = new RelayCommand<object>((param) =>
             {
                 var resumo = param as PastaResumo;
@@ -1229,16 +1231,55 @@ namespace BuscaDeJogosLocais
                 var alvo = Settings.Pastas.FirstOrDefault(p => LocalGameUtils.EhMesmaPasta(p, resumo.Caminho));
                 if (alvo == null) return;
 
-                if (plugin.PlayniteApi.Dialogs.ShowMessage(
-                        string.Format("Deixar de monitorar {0}?\n\nOs jogos já importados continuam na biblioteca; a pasta só deixa de ser varrida e conferida.", alvo),
-                        "Confirmar", System.Windows.MessageBoxButton.YesNo) != System.Windows.MessageBoxResult.Yes)
+                var restantes = Settings.Pastas.Where(p => !LocalGameUtils.EhMesmaPasta(p, alvo)).ToList();
+                string coberta = LocalGameUtils.PastaQueTambemCobre(alvo, restantes);
+
+                // Só jogo que o Playnite tem (GameId) e que nenhuma pasta restante cobre.
+                var jogosDaPasta = (resumo.Itens ?? new List<PastaJogoItem>())
+                    .Where(i => i.GameId != Guid.Empty && !string.IsNullOrEmpty(i.Caminho)
+                                && LocalGameUtils.PastaMonitoradaDe(i.Caminho, restantes) == null)
+                    .ToList();
+                int ausentes = jogosDaPasta.Count(i => i.Status == "Pasta ausente");
+
+                var ignoradosDaPasta = RegistrosDeIgnoradosDaPasta(alvo, restantes);
+                var carimbosDaPasta = RegistrosDeVerificacaoDaPasta(alvo, restantes);
+                int registros = ignoradosDaPasta.Count + carimbosDaPasta.Count;
+
+                string aviso = LocalGameUtils.MontarAvisoRemocaoPasta(
+                    alvo, jogosDaPasta.Count, ausentes, resumo.NaoImportados,
+                    resumo.DiscoDesconectado, coberta, registros);
+
+                var botoes = registros > 0
+                    ? System.Windows.MessageBoxButton.YesNoCancel
+                    : System.Windows.MessageBoxButton.YesNo;
+                var resposta = plugin.PlayniteApi.Dialogs.ShowMessage(aviso, "Deixar de monitorar pasta", botoes);
+                if (resposta == System.Windows.MessageBoxResult.Cancel
+                    || (registros == 0 && resposta != System.Windows.MessageBoxResult.Yes)
+                    || resposta == System.Windows.MessageBoxResult.None)
                     return;
+
+                bool limpar = registros > 0 && resposta == System.Windows.MessageBoxResult.Yes;
 
                 Settings.Pastas.Remove(alvo);
                 var rem = Settings.PastasRemoviveis.FirstOrDefault(p => LocalGameUtils.EhMesmaPasta(p, alvo));
                 if (rem != null) Settings.PastasRemoviveis.Remove(rem);
+                if (limpar)
+                {
+                    foreach (var e in ignoradosDaPasta) Settings.CaminhosIgnorados.Remove(e);
+                    foreach (var v in carimbosDaPasta) Settings.Verificacoes.Remove(v);
+                }
                 OnPropertyChanged("OpcoesPastas");
                 CarregarTelaEmSegundoPlano();
+
+                string resultado = string.Format("Pasta removida do monitoramento: {0}", alvo);
+                if (jogosDaPasta.Count > 0)
+                    resultado += string.Format("\n\n{0} jogo(s) continuam na biblioteca, agora fora das pastas monitoradas.", jogosDaPasta.Count);
+                if (limpar)
+                    resultado += string.Format("\n{0} registro(s) da pasta foram limpos.", registros);
+                else if (registros > 0)
+                    resultado += string.Format("\n{0} registro(s) da pasta foram mantidos.", registros);
+                resultado += "\n\nPara voltar a monitorar, use \"Adicionar pasta\".";
+                plugin.PlayniteApi.Dialogs.ShowMessage(resultado, "Pasta removida");
             });
 
             VerJogosDaPastaCommand = new RelayCommand<object>((param) =>
@@ -1929,6 +1970,37 @@ namespace BuscaDeJogosLocais
             if (jogo.GameActions == null) return string.Empty;
             var acao = jogo.GameActions.FirstOrDefault(a => a.Type == GameActionType.File && !string.IsNullOrEmpty(a.Path));
             return acao != null ? acao.Path : string.Empty;
+        }
+
+        // Ignorados da pasta que nenhuma pasta restante cobre: pela pasta-mãe gravada ou pelo
+        // caminho do executável.
+        private List<ExcludedEntry> RegistrosDeIgnoradosDaPasta(string pasta, List<string> restantes)
+        {
+            var lista = new List<ExcludedEntry>();
+            if (Settings.CaminhosIgnorados == null) return lista;
+            foreach (var e in Settings.CaminhosIgnorados)
+            {
+                if (e == null) continue;
+                bool daPasta = LocalGameUtils.EhMesmaPasta(e.PastaMonitoradaPai, pasta)
+                               || LocalGameUtils.IsUnderFolder(e.CaminhoExe, pasta);
+                if (!daPasta) continue;
+                if (!string.IsNullOrEmpty(e.CaminhoExe) && LocalGameUtils.PastaMonitoradaDe(e.CaminhoExe, restantes) != null) continue;
+                lista.Add(e);
+            }
+            return lista;
+        }
+
+        private List<VerificacaoEntry> RegistrosDeVerificacaoDaPasta(string pasta, List<string> restantes)
+        {
+            var lista = new List<VerificacaoEntry>();
+            if (Settings.Verificacoes == null) return lista;
+            foreach (var v in Settings.Verificacoes)
+            {
+                if (v == null || !LocalGameUtils.IsUnderFolder(v.PastaRaiz, pasta)) continue;
+                if (LocalGameUtils.PastaMonitoradaDe(v.PastaRaiz, restantes) != null) continue;
+                lista.Add(v);
+            }
+            return lista;
         }
 
         public void RecalcularEstatisticas()

@@ -619,6 +619,42 @@ class RegressionTests
         Check("caminho invalido nao explode, devolve motivo",
             LocalGameUtils.CaminhoParaAbrirNoExplorador("::nao<>e|caminho", out erroAbrir) == null && !string.IsNullOrEmpty(erroAbrir));
 
+        // ---- Remover pasta monitorada: o que o aviso precisa dizer ----
+        Console.WriteLine();
+        Console.WriteLine("[RemoverPastaMonitorada]");
+
+        var registrosSob = new[] { @"D:\Jogos\A", @"D:\Jogos\Indies\B", @"E:\Outro\C", @"D:\Jogos2\D" };
+        Check("conta so o que esta sob a pasta (Jogos2 nao e filho de Jogos)",
+            LocalGameUtils.ContarSemCobertura(registrosSob, @"D:\Jogos", new string[0]) == 2);
+        Check("pasta-filha que continua monitorada tira o caminho da conta",
+            LocalGameUtils.ContarSemCobertura(registrosSob, @"D:\Jogos", new[] { @"D:\Jogos\Indies" }) == 1);
+        Check("lista nula nao explode",
+            LocalGameUtils.ContarSemCobertura(null, @"D:\Jogos", null) == 0);
+
+        Check("pasta dentro de outra monitorada e reconhecida",
+            LocalGameUtils.PastaQueTambemCobre(@"D:\Jogos\Indies", new[] { @"D:\Jogos", @"E:\X" }) == @"D:\Jogos");
+        Check("a propria pasta nao conta como cobertura",
+            LocalGameUtils.PastaQueTambemCobre(@"D:\Jogos", new[] { @"D:\Jogos\" }) == null);
+        Check("pasta irma nao cobre",
+            LocalGameUtils.PastaQueTambemCobre(@"D:\Jogos2", new[] { @"D:\Jogos" }) == null);
+
+        string avisoCheio = LocalGameUtils.MontarAvisoRemocaoPasta(@"D:\Jogos", 12, 3, 5, true, null, 7);
+        Check("aviso diz que nenhum jogo sai da biblioteca", avisoCheio.Contains("Nenhum jogo sai da biblioteca"));
+        Check("aviso traz a contagem de jogos que ficam fora", avisoCheio.Contains("12 jogo(s) ficam FORA"));
+        Check("aviso destaca os de pasta ausente", avisoCheio.Contains("3 desses jogos estao com a pasta ausente".Replace("estao", "estão")));
+        Check("aviso fala do disco desconectado", avisoCheio.Contains("desconectado"));
+        Check("aviso fala dos nao importados", avisoCheio.Contains("5 pasta(s) de jogo ainda não importadas"));
+        Check("aviso explica as tres respostas quando ha registros",
+            avisoCheio.Contains("Sim:") && avisoCheio.Contains("Não:") && avisoCheio.Contains("Cancelar:"));
+
+        string avisoCoberto = LocalGameUtils.MontarAvisoRemocaoPasta(@"D:\Jogos\Indies", 0, 0, 0, false, @"D:\Jogos", 0);
+        Check("coberta por outra pasta: diz que continua conferida", avisoCoberto.Contains("continua monitorada"));
+        Check("coberta por outra pasta: nao assusta com jogos fora", !avisoCoberto.Contains("FORA"));
+        Check("sem registros: nao oferece Sim/Nao/Cancelar", !avisoCoberto.Contains("Cancelar:"));
+
+        string avisoCoberta2 = LocalGameUtils.MontarAvisoRemocaoPasta(@"D:\Jogos\Indies", 4, 2, 0, false, @"D:\Jogos", 0);
+        Check("coberta por outra pasta: nao cobra resolver pasta ausente", !avisoCoberta2.Contains("Resolva-os"));
+
         Console.WriteLine();
         Console.WriteLine(string.Format("Resultado: {0}/{1} passaram, {2} falha(s).", total - failures, total, failures));
         return failures == 0 ? 0 : 1;

@@ -6,6 +6,19 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.14.0] - 2026-10-10
+
+### Alterado
+- **"Remover" pasta monitorada agora explica o que muda antes de confirmar**, com os números daquela pasta: quantos jogos ficam fora de qualquer pasta monitorada (deixam de ser conferidos e de ser oferecidos para desinstalar ou reapontar), quantos estão com a pasta ausente (o aviso pede para resolvê-los antes), quantas pastas de jogo não importadas deixam de ser achadas pela busca e se o disco está desconectado. Nenhum jogo sai da biblioteca do Playnite, e o aviso diz isso.
+- **Pasta dentro de outra pasta monitorada** é reconhecida: o aviso informa que os jogos continuam sendo conferidos pela pasta de cima.
+- **Limpeza dos registros da pasta.** Quando existem jogos ignorados ou datas de verificação daquela pasta, a confirmação oferece três respostas: Sim (remove e limpa os registros), Não (remove e mantém os registros, que voltam se você monitorar a pasta de novo) e Cancelar. O histórico de importações e desinstalações nunca é apagado.
+- Depois de remover, uma mensagem resume o resultado (quantos jogos continuam na biblioteca, quantos registros foram limpos ou mantidos).
+
+### Corrigido
+- **O botão "Remover" podia ficar cortado** na tabela de pastas, porque a coluna de ações tinha largura fixa para três botões. A coluna agora se ajusta ao conteúdo.
+
+---
+
 ## [0.13.1] - 2026-10-04
 
 > A 0.13.0 nunca foi publicada (a compilação da versão falhou); estas são as mudanças dela.
