@@ -1119,5 +1119,100 @@ namespace BuscaDeJogosLocais
             }
             return melhor;
         }
+
+        // ---- Plataforma PC ----
+        //
+        // Todo jogo que esta extensão importa é um executável de Windows na máquina, então a
+        // plataforma é PC (Windows), sempre. Até a 0.14.0 a importação não gravava plataforma
+        // nenhuma, e quem decidia era o download de metadados. O Xbox Metadata (Jeshibu) só trata
+        // um resultado como "casamento perfeito" quando a plataforma dele bate com a do jogo
+        // (ScraperManager.HasPlatformOverlap); jogo sem plataforma não casa com nada, e a primeira
+        // listagem com o mesmo nome vence, inclusive a de Xbox. O jogo saía com a plataforma e a
+        // capa da versão de Xbox.
+
+        // Id de especificação que o Playnite usa para PC (Windows) em Emulation/Platforms.yaml.
+        public const string SpecPcWindows = "pc_windows";
+        public const string NomePcWindows = "PC (Windows)";
+
+        // Escolhe, entre as plataformas cadastradas, a que é PC (Windows): pela especificação
+        // primeiro, porque o nome muda com o idioma e com edição do usuário; pelo nome depois.
+        // Guid.Empty quando não há nenhuma, e aí quem chama cadastra.
+        public static Guid EscolherPlataformaPc(IEnumerable<PlataformaCadastrada> plataformas)
+        {
+            if (plataformas == null) return Guid.Empty;
+            var lista = plataformas.Where(p => p != null && p.Id != Guid.Empty).ToList();
+
+            var porSpec = lista.FirstOrDefault(p =>
+                string.Equals(p.SpecId, SpecPcWindows, StringComparison.OrdinalIgnoreCase));
+            if (porSpec != null) return porSpec.Id;
+
+            var porNome = lista.FirstOrDefault(p =>
+                string.Equals((p.Nome ?? string.Empty).Trim(), NomePcWindows, StringComparison.OrdinalIgnoreCase));
+            return porNome != null ? porNome.Id : Guid.Empty;
+        }
+
+        // A plataforma do jogo precisa virar PC? Sim, a não ser que ela já seja exatamente PC.
+        // "PC + Xbox" também é corrigido: a segunda plataforma veio da listagem de Xbox, e é ela
+        // que leva o Xbox Metadata a aceitar a capa de Xbox como casamento perfeito.
+        // Jogo de emulação fica de fora: a plataforma dele é o console, não o PC que roda o emulador.
+        public static bool PrecisaVirarPc(IList<Guid> plataformasDoJogo, Guid idPc, bool jogoDeEmulacao)
+        {
+            if (jogoDeEmulacao || idPc == Guid.Empty) return false;
+            if (plataformasDoJogo == null) return true;
+            return !(plataformasDoJogo.Count == 1 && plataformasDoJogo[0] == idPc);
+        }
+
+        // Na correção dos já importados: a capa veio da versão de outra plataforma? Só quando o
+        // jogo tinha plataforma gravada diferente de PC, que é a evidência de que o download
+        // escolheu outra listagem. Jogo sem plataforma nenhuma não dá essa prova, e a capa dele
+        // fica onde está.
+        public static bool CapaVeioDeOutraPlataforma(IList<Guid> plataformasAntes, Guid idPc)
+        {
+            if (plataformasAntes == null || idPc == Guid.Empty) return false;
+            return plataformasAntes.Any(id => id != Guid.Empty && id != idPc);
+        }
+
+        // ---- Veto da capa do Xbox Store ----
+        //
+        // Gravar PC no jogo não basta para o Xbox Metadata escolher a listagem de PC: a busca da
+        // loja devolve os resultados SEM plataforma, então a comparação de plataforma dele nunca
+        // casa e vence a primeira listagem de mesmo nome. Medido em 20/10/2026: "Minecraft" devolve
+        // primeiro a listagem [xbox_one, xbox_series] e depois a [pc_windows], na mesma ordem com o
+        // jogo marcado como PC ou sem plataforma. A plataforma só aparece no detalhe da listagem.
+
+        // A listagem do Xbox Store inclui PC? null quando ela não diz plataforma nenhuma, e aí
+        // não há como julgar: a capa fica.
+        public static bool? ListagemIncluiPc(IEnumerable<string> specIds, IEnumerable<string> nomes)
+        {
+            var specs = (specIds ?? Enumerable.Empty<string>()).Where(s => !string.IsNullOrEmpty(s)).ToList();
+            var ns = (nomes ?? Enumerable.Empty<string>()).Where(s => !string.IsNullOrEmpty(s)).ToList();
+            if (specs.Count == 0 && ns.Count == 0) return null;
+            return specs.Any(s => string.Equals(s, SpecPcWindows, StringComparison.OrdinalIgnoreCase)) ||
+                   ns.Any(n => string.Equals(n.Trim(), NomePcWindows, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(n.Trim(), "PC", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(n.Trim(), "Windows", StringComparison.OrdinalIgnoreCase));
+        }
+
+        // A capa gravada é a da listagem? Comparação de conteúdo, byte a byte. O Playnite grava a
+        // imagem baixada sem mexer quando ela já é JPG ou PNG (GameDatabase.AddFile), e o Xbox Store
+        // devolve o mesmo JPG a cada download. É o que separa a capa que veio da loja da que a
+        // pessoa escolheu à mão, que nunca é vetada.
+        public static bool MesmosBytes(byte[] a, byte[] b)
+        {
+            if (a == null || b == null || a.Length == 0 || a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (a[i] != b[i]) return false;
+            }
+            return true;
+        }
+    }
+
+    // O que interessa de uma plataforma do banco do Playnite, sem depender do SDK.
+    public class PlataformaCadastrada
+    {
+        public Guid Id { get; set; }
+        public string SpecId { get; set; }
+        public string Nome { get; set; }
     }
 }

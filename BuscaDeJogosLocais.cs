@@ -59,6 +59,313 @@ namespace BuscaDeJogosLocais
         {
             UpdateWatchers();
             VerificarScanAutomatico();
+            PlayniteApi.Database.Games.ItemUpdated += ManterPlataformaPc;
+        }
+
+        /// <summary>
+        /// Jogo desta extensão continua PC depois de qualquer download de metadados.
+        ///
+        /// Gravar PC na importação basta quando o Playnite está no padrão "baixar só o que falta":
+        /// ele não troca uma plataforma que já existe. Com "sobrescrever" ligado, ou pelo
+        /// Editar › Baixar metadados escolhendo outra listagem, a plataforma volta a ser a da
+        /// listagem (Xbox One, por exemplo), e é aqui que ela retorna para PC.
+        /// </summary>
+        private void ManterPlataformaPc(object sender, ItemUpdatedEventArgs<Game> e)
+        {
+            if (e == null || e.UpdatedItems == null) return;
+
+            var ids = new List<Guid>();
+            var capasNovas = new List<Guid>();
+            foreach (var item in e.UpdatedItems)
+            {
+                var g = item.NewData;
+                if (g == null || g.PluginId != Id || EhJogoDeEmulacao(g)) continue;
+
+                if (!string.IsNullOrEmpty(g.CoverImage) &&
+                    (item.OldData == null || !string.Equals(item.OldData.CoverImage, g.CoverImage, StringComparison.OrdinalIgnoreCase)))
+                {
+                    capasNovas.Add(g.Id);
+                }
+
+                if (!LocalGameUtils.PrecisaVirarPc(g.PlatformIds, IdPlataformaPcExistente(), false)) continue;
+                ids.Add(g.Id);
+            }
+
+            if (capasNovas.Count > 0) VetarCapaDeOutraPlataforma(capasNovas);
+            if (ids.Count == 0) return;
+
+            // Fora do evento: atualizar o banco de dentro do próprio ItemUpdated reentra no meio
+            // da gravação de quem disparou. A nossa gravação dispara o evento de novo, mas aí o
+            // jogo já é PC e nada acontece.
+            PlayniteApi.MainView.UIDispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    using (PlayniteApi.Database.BufferedUpdate())
+                    {
+                        foreach (var id in ids)
+                        {
+                            var game = PlayniteApi.Database.Games.Get(id);
+                            if (game == null || !AplicarPlataformaPc(game)) continue;
+                            PlayniteApi.Database.Games.Update(game);
+                            logger.Info(string.Format("[Plataforma] «{0}» voltou para PC (Windows) depois de uma atualização.", game.Name));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(ex, "Falha ao manter a plataforma PC.");
+                }
+            }));
+        }
+
+        public const string TagSemCapaDePc = "Sem capa de PC";
+
+        /// <summary>
+        /// Tira a capa que veio de uma listagem do Xbox Store que não é de PC.
+        ///
+        /// Quando o IGDB não acha o jogo, a capa vem da fonte seguinte da prioridade, o Xbox Store,
+        /// e ele escolhe a primeira listagem de mesmo nome sem saber a plataforma (ver
+        /// LocalGameUtils.ListagemIncluiPc). Aqui a extensão pergunta ao próprio Xbox Metadata qual
+        /// listagem ele usa para o jogo; se ela não inclui PC e a capa gravada é exatamente a dela,
+        /// capa e fundo saem e o jogo ganha a tag "Sem capa de PC", para a pessoa escolher no
+        /// Editar. Capa que não bate byte a byte (IGDB, arquivo escolhido à mão) fica.
+        /// Roda fora da thread de interface: são duas idas à loja por jogo.
+        /// </summary>
+        private void VetarCapaDeOutraPlataforma(List<Guid> gameIds)
+        {
+            var xbox = PlayniteApi.Addons.Plugins.OfType<MetadataPlugin>()
+                .FirstOrDefault(p => p.Name != null && p.Name.IndexOf("Xbox", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (xbox == null) return;
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var vetados = new List<Guid>();
+                var aprovados = new List<Guid>();
+                foreach (var id in gameIds)
+                {
+                    try
+                    {
+                        var game = PlayniteApi.Database.Games.Get(id);
+                        if (game == null || string.IsNullOrEmpty(game.CoverImage)) continue;
+
+                        bool vetar = CapaEhDeListagemSemPc(xbox, game);
+                        logger.Info(string.Format("[Capa] «{0}»: {1}", game.Name, vetar ? "capa da listagem do Xbox Store sem PC, vetada" : "capa mantida"));
+                        if (vetar) vetados.Add(id); else aprovados.Add(id);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex, "Falha ao conferir a capa no Xbox Store.");
+                    }
+                }
+
+                if (vetados.Count == 0 && aprovados.Count == 0) return;
+                PlayniteApi.MainView.UIDispatcher.BeginInvoke(new Action(() => AplicarVetoDeCapa(vetados, aprovados)));
+            });
+        }
+
+        private bool CapaEhDeListagemSemPc(MetadataPlugin xbox, Game game)
+        {
+            using (var provedor = xbox.GetMetadataProvider(new MetadataRequestOptions(game, true)))
+            {
+                if (provedor == null) return false;
+                var args = new GetMetadataFieldArgs();
+
+                var plataformas = provedor.GetPlatforms(args);
+                var lista = plataformas == null ? new List<MetadataProperty>() : plataformas.ToList();
+                bool? temPc = LocalGameUtils.ListagemIncluiPc(
+                    lista.OfType<MetadataSpecProperty>().Select(p => p.Id),
+                    lista.OfType<MetadataNameProperty>().Select(p => p.Name));
+                if (temPc != false) return false;
+
+                var capa = provedor.GetCoverImage(args);
+                if (capa == null) return false;
+
+                byte[] daLoja = capa.Content;
+                if ((daLoja == null || daLoja.Length == 0) && !string.IsNullOrEmpty(capa.Path) && capa.Path.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                {
+                    using (var web = new System.Net.WebClient())
+                    {
+                        daLoja = web.DownloadData(capa.Path);
+                    }
+                }
+
+                string local = PlayniteApi.Database.GetFullFilePath(game.CoverImage);
+                if (string.IsNullOrEmpty(local) || !File.Exists(local)) return false;
+                return LocalGameUtils.MesmosBytes(daLoja, File.ReadAllBytes(local));
+            }
+        }
+
+        private void AplicarVetoDeCapa(List<Guid> vetados, List<Guid> aprovados)
+        {
+            try
+            {
+                var tag = PlayniteApi.Database.Tags.Add(TagSemCapaDePc);
+                var nomes = new List<string>();
+                using (PlayniteApi.Database.BufferedUpdate())
+                {
+                    foreach (var id in vetados)
+                    {
+                        var game = PlayniteApi.Database.Games.Get(id);
+                        if (game == null || string.IsNullOrEmpty(game.CoverImage)) continue;
+                        RemoverImagem(game.CoverImage);
+                        RemoverImagem(game.BackgroundImage);
+                        game.CoverImage = null;
+                        game.BackgroundImage = null;
+                        if (game.TagIds == null) game.TagIds = new List<Guid>();
+                        if (!game.TagIds.Contains(tag.Id)) game.TagIds.Add(tag.Id);
+                        PlayniteApi.Database.Games.Update(game);
+                        nomes.Add(game.Name);
+                    }
+
+                    // Capa aprovada (outra fonte, ou escolhida à mão) tira a pendência.
+                    foreach (var id in aprovados)
+                    {
+                        var game = PlayniteApi.Database.Games.Get(id);
+                        if (game == null || game.TagIds == null || !game.TagIds.Contains(tag.Id)) continue;
+                        game.TagIds.Remove(tag.Id);
+                        PlayniteApi.Database.Games.Update(game);
+                    }
+                }
+
+                if (nomes.Count > 0)
+                {
+                    PlayniteApi.Notifications.Add(new NotificationMessage(
+                        "buscadejogoslocais-capa-pc-" + Guid.NewGuid(),
+                        string.Format("Busca de Jogos Locais: a capa de {0} veio da versão de Xbox e foi retirada ({1}). " +
+                                      "Escolha a capa de PC em Editar › Baixar metadados. A tag \"{2}\" marca quem está pendente.",
+                            nomes.Count == 1 ? "1 jogo" : nomes.Count + " jogos", string.Join(", ", nomes.Take(5)), TagSemCapaDePc),
+                        NotificationType.Info));
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Falha ao aplicar o veto de capa.");
+            }
+        }
+
+        private static bool EhJogoDeEmulacao(Game game)
+        {
+            return game.GameActions != null && game.GameActions.Any(a => a != null && a.Type == GameActionType.Emulator);
+        }
+
+        // Id da plataforma PC (Windows) já cadastrada, sem cadastrar nada. Guid.Empty se não há.
+        private Guid IdPlataformaPcExistente()
+        {
+            try
+            {
+                return LocalGameUtils.EscolherPlataformaPc(PlayniteApi.Database.Platforms.Select(p =>
+                    new PlataformaCadastrada { Id = p.Id, SpecId = p.SpecificationId, Nome = p.Name }));
+            }
+            catch (Exception)
+            {
+                return Guid.Empty;
+            }
+        }
+
+        // Id da plataforma PC (Windows), cadastrando com a especificação certa quando a
+        // biblioteca ainda não tem (biblioteca nova, ou só de emulação).
+        public Guid IdPlataformaPc()
+        {
+            var id = IdPlataformaPcExistente();
+            if (id != Guid.Empty) return id;
+
+            var nova = new Platform(LocalGameUtils.NomePcWindows) { SpecificationId = LocalGameUtils.SpecPcWindows };
+            PlayniteApi.Database.Platforms.Add(nova);
+            return nova.Id;
+        }
+
+        /// <summary>Deixa PC (Windows) como a única plataforma do jogo. Não grava no banco; devolve se mudou.</summary>
+        public bool AplicarPlataformaPc(Game game)
+        {
+            if (game == null) return false;
+            try
+            {
+                var idPc = IdPlataformaPc();
+                if (!LocalGameUtils.PrecisaVirarPc(game.PlatformIds, idPc, EhJogoDeEmulacao(game))) return false;
+                game.PlatformIds = new List<Guid> { idPc };
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, string.Format("Não consegui marcar «{0}» como PC.", game.Name));
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Corrige os jogos que esta extensão já importou e que estão com outra plataforma.
+        ///
+        /// Plataforma vira PC (Windows). Capa e fundo só saem quando havia plataforma errada
+        /// gravada, porque é a prova de que vieram da listagem de outra plataforma; sem isso o
+        /// "Baixar metadados" do Playnite, que só preenche o que falta, manteria a capa de Xbox.
+        /// Os corrigidos ficam selecionados na biblioteca para o download nativo rodar sobre eles.
+        /// </summary>
+        public void CorrigirPlataformaDosJaImportados()
+        {
+            var idPc = IdPlataformaPc();
+            var errados = PlayniteApi.Database.Games
+                .Where(g => g.PluginId == Id && LocalGameUtils.PrecisaVirarPc(g.PlatformIds, idPc, EhJogoDeEmulacao(g)))
+                .OrderBy(g => g.Name)
+                .ToList();
+
+            if (errados.Count == 0)
+            {
+                PlayniteApi.Dialogs.ShowMessage("Todos os jogos importados por esta extensão já estão como PC (Windows).", "Busca de Jogos Locais");
+                return;
+            }
+
+            var comCapaErrada = errados.Where(g => LocalGameUtils.CapaVeioDeOutraPlataforma(g.PlatformIds, idPc)).ToList();
+            var nomes = errados.Take(15).Select(g =>
+            {
+                string atual = PrimeiraPlataformaDoJogo(g);
+                return string.Format("• {0} ({1})", g.Name, string.IsNullOrEmpty(atual) ? "sem plataforma" : atual);
+            }).ToList();
+            if (errados.Count > 15) nomes.Add(string.Format("… e mais {0}", errados.Count - 15));
+
+            string texto = string.Format(
+                "{0} jogo(s) importado(s) por esta extensão não estão como PC (Windows):\n\n{1}\n\n" +
+                "Eles passam a ser PC (Windows). {2}Depois ficam selecionados na biblioteca para você rodar o \"Baixar metadados…\".\n\nCorrigir agora?",
+                errados.Count, string.Join("\n", nomes),
+                comCapaErrada.Count > 0
+                    ? string.Format("Em {0} deles a capa e o fundo vieram da versão de outra plataforma e serão apagados, para o download trazer os da versão de PC. ", comCapaErrada.Count)
+                    : string.Empty);
+
+            if (PlayniteApi.Dialogs.ShowMessage(texto, "Corrigir plataforma", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+
+            var corrigidos = new List<Guid>();
+            using (PlayniteApi.Database.BufferedUpdate())
+            {
+                foreach (var game in errados)
+                {
+                    bool capaErrada = LocalGameUtils.CapaVeioDeOutraPlataforma(game.PlatformIds, idPc);
+                    if (!AplicarPlataformaPc(game)) continue;
+
+                    if (capaErrada)
+                    {
+                        RemoverImagem(game.CoverImage);
+                        RemoverImagem(game.BackgroundImage);
+                        game.CoverImage = null;
+                        game.BackgroundImage = null;
+                    }
+
+                    PlayniteApi.Database.Games.Update(game);
+                    corrigidos.Add(game.Id);
+                    logger.Info(string.Format("[Plataforma] «{0}» corrigido para PC (Windows){1}.", game.Name, capaErrada ? ", capa e fundo removidos" : string.Empty));
+                }
+            }
+
+            SelecionarNaBiblioteca(corrigidos);
+            PlayniteApi.Dialogs.ShowMessage(
+                string.Format("{0} jogo(s) agora são PC (Windows). {1}", corrigidos.Count, AvisoBaixarMetadados),
+                "Busca de Jogos Locais");
+        }
+
+        private void RemoverImagem(string arquivo)
+        {
+            if (string.IsNullOrEmpty(arquivo) || arquivo.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return;
+            try { PlayniteApi.Database.RemoveFile(arquivo); }
+            catch (Exception ex) { logger.Warn(ex, "Não consegui apagar a imagem " + arquivo); }
         }
 
         public void UpdateWatchers()
@@ -807,6 +1114,10 @@ namespace BuscaDeJogosLocais
 
             ApplyLocalSource(game);
 
+            // Antes do Add, para o jogo já nascer PC: é a plataforma que o download de metadados
+            // usa para escolher a listagem certa (e a capa certa) logo na primeira passada.
+            AplicarPlataformaPc(game);
+
             PlayniteApi.Database.Games.Add(game);
             gameId = game.Id;
 
@@ -1173,6 +1484,7 @@ namespace BuscaDeJogosLocais
             if (!string.IsNullOrEmpty(pasta) && string.IsNullOrEmpty(game.InstallDirectory)) game.InstallDirectory = pasta;
             game.IsInstalled = !string.IsNullOrEmpty(game.InstallDirectory) && Directory.Exists(game.InstallDirectory);
             ApplyLocalSource(game);
+            AplicarPlataformaPc(game);
             PlayniteApi.Database.Games.Update(game);
             logger.Info(string.Format("[Adotar] «{0}» agora é desta extensão ({1}).", game.Name, game.InstallDirectory));
             return true;

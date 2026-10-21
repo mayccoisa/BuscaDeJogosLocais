@@ -719,6 +719,7 @@ namespace BuscaDeJogosLocais
         public RelayCommand<object> RelinkSelectedCommand { get; private set; }
         public RelayCommand<object> MarkNotFoundAsUninstalledCommand { get; private set; }
         public RelayCommand<object> ApplyLocalSourceToExistingCommand { get; private set; }
+        public RelayCommand<object> CorrigirPlataformaPcCommand { get; private set; }
         public RelayCommand<object> LimparNomesExistentesCommand { get; private set; }
         public RelayCommand<object> CompletarBibliotecaCommand { get; private set; }
 
@@ -1192,6 +1193,11 @@ namespace BuscaDeJogosLocais
                 }
 
                 plugin.PlayniteApi.Dialogs.ShowMessage(string.Format("{0} jogo(s) marcado(s) com a Fonte \"Local\".", atualizados), "Sucesso");
+            });
+
+            CorrigirPlataformaPcCommand = new RelayCommand<object>((_) =>
+            {
+                plugin.CorrigirPlataformaDosJaImportados();
             });
 
             CompletarBibliotecaCommand = new RelayCommand<object>((_) =>

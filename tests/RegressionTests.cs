@@ -656,6 +656,63 @@ class RegressionTests
         Check("coberta por outra pasta: nao cobra resolver pasta ausente", !avisoCoberta2.Contains("Resolva-os"));
 
         Console.WriteLine();
+        Console.WriteLine("[Plataforma PC]");
+
+        var idPc = Guid.NewGuid();
+        var idXbox = Guid.NewGuid();
+        var idPs = Guid.NewGuid();
+
+        Check("acha PC pela especificacao mesmo com nome traduzido",
+            LocalGameUtils.EscolherPlataformaPc(new[] {
+                new PlataformaCadastrada { Id = idXbox, SpecId = "xbox_one", Nome = "Microsoft Xbox One" },
+                new PlataformaCadastrada { Id = idPc, SpecId = "pc_windows", Nome = "Computador (Windows)" } }) == idPc);
+        Check("especificacao vence nome: plataforma renomeada para PC (Windows) sem spec perde",
+            LocalGameUtils.EscolherPlataformaPc(new[] {
+                new PlataformaCadastrada { Id = idXbox, SpecId = null, Nome = "PC (Windows)" },
+                new PlataformaCadastrada { Id = idPc, SpecId = "pc_windows", Nome = "Windows" } }) == idPc);
+        Check("sem spec, cai no nome PC (Windows)",
+            LocalGameUtils.EscolherPlataformaPc(new[] {
+                new PlataformaCadastrada { Id = idPc, SpecId = null, Nome = " pc (windows) " } }) == idPc);
+        Check("PC (DOS) e PC (Linux) nao sao PC (Windows)",
+            LocalGameUtils.EscolherPlataformaPc(new[] {
+                new PlataformaCadastrada { Id = idXbox, SpecId = "pc_dos", Nome = "PC (DOS)" },
+                new PlataformaCadastrada { Id = idPs, SpecId = "pc_linux", Nome = "PC (Linux)" } }) == Guid.Empty);
+        Check("lista nula devolve vazio", LocalGameUtils.EscolherPlataformaPc(null) == Guid.Empty);
+
+        Check("jogo sem plataforma vira PC", LocalGameUtils.PrecisaVirarPc(new List<Guid>(), idPc, false));
+        Check("PlatformIds nulo vira PC", LocalGameUtils.PrecisaVirarPc(null, idPc, false));
+        Check("jogo de Xbox vira PC (o caso relatado)", LocalGameUtils.PrecisaVirarPc(new List<Guid> { idXbox }, idPc, false));
+        Check("PC + Xbox vira so PC", LocalGameUtils.PrecisaVirarPc(new List<Guid> { idPc, idXbox }, idPc, false));
+        Check("PC duplicado e normalizado", LocalGameUtils.PrecisaVirarPc(new List<Guid> { idPc, idPc }, idPc, false));
+        Check("ja PC nao e tocado", !LocalGameUtils.PrecisaVirarPc(new List<Guid> { idPc }, idPc, false));
+        Check("jogo de emulacao nunca vira PC", !LocalGameUtils.PrecisaVirarPc(new List<Guid> { idPs }, idPc, true));
+        Check("sem id de PC nao decide nada", !LocalGameUtils.PrecisaVirarPc(new List<Guid> { idXbox }, Guid.Empty, false));
+
+        Check("capa de jogo marcado Xbox veio de outra plataforma",
+            LocalGameUtils.CapaVeioDeOutraPlataforma(new List<Guid> { idXbox }, idPc));
+        Check("capa de jogo PC + Xbox tambem",
+            LocalGameUtils.CapaVeioDeOutraPlataforma(new List<Guid> { idPc, idXbox }, idPc));
+        Check("jogo sem plataforma nao prova nada: capa fica",
+            !LocalGameUtils.CapaVeioDeOutraPlataforma(new List<Guid>(), idPc));
+        Check("jogo so PC: capa fica",
+            !LocalGameUtils.CapaVeioDeOutraPlataforma(new List<Guid> { idPc }, idPc));
+
+        Console.WriteLine("[Veto da capa do Xbox Store]");
+        Check("listagem so de Xbox nao inclui PC (Minecraft, medido)",
+            LocalGameUtils.ListagemIncluiPc(new[] { "xbox_one", "xbox_series" }, null) == false);
+        Check("listagem Play Anywhere inclui PC",
+            LocalGameUtils.ListagemIncluiPc(new[] { "xbox_one", "xbox_series", "pc_windows" }, new[] { "XCloud", "Handheld" }) == true);
+        Check("plataforma por nome tambem conta", LocalGameUtils.ListagemIncluiPc(null, new[] { "PC (Windows)" }) == true);
+        Check("XCloud e Handheld sozinhos nao sao PC", LocalGameUtils.ListagemIncluiPc(null, new[] { "XCloud", "Handheld" }) == false);
+        Check("listagem sem plataforma nenhuma: nao julga (null)", LocalGameUtils.ListagemIncluiPc(new string[0], null) == null);
+
+        Check("mesmos bytes", LocalGameUtils.MesmosBytes(new byte[] { 1, 2, 3 }, new byte[] { 1, 2, 3 }));
+        Check("um byte diferente", !LocalGameUtils.MesmosBytes(new byte[] { 1, 2, 3 }, new byte[] { 1, 2, 4 }));
+        Check("tamanho diferente", !LocalGameUtils.MesmosBytes(new byte[] { 1, 2, 3 }, new byte[] { 1, 2 }));
+        Check("vazio nunca casa", !LocalGameUtils.MesmosBytes(new byte[0], new byte[0]));
+        Check("nulo nunca casa", !LocalGameUtils.MesmosBytes(null, new byte[] { 1 }));
+
+        Console.WriteLine();
         Console.WriteLine(string.Format("Resultado: {0}/{1} passaram, {2} falha(s).", total - failures, total, failures));
         return failures == 0 ? 0 : 1;
     }

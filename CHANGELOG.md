@@ -6,6 +6,16 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/), e o
 
 ---
 
+## [0.15.0] - 2026-10-20
+
+### Adicionado
+- **Todo jogo importado entra como PC (Windows).** Até aqui a importação não gravava plataforma nenhuma, e o Baixar metadados decidia: um jogo de PC podia sair marcado como Xbox One. O mesmo vale para o jogo adicionado à mão que a extensão adota.
+- **A plataforma continua PC depois de qualquer download de metadados.** Se um download (com sobrescrever ligado, ou escolhendo outra versão em Editar) trocar a plataforma de um jogo da extensão, ela volta sozinha para PC (Windows). Jogos de emulação e jogos de outras bibliotecas (Steam, Xbox, Epic) não são tocados.
+- **Capa da versão de Xbox é retirada.** Quando o IGDB não acha o jogo, a capa vem do Xbox Store, que escolhe a primeira versão com o mesmo nome sem olhar a plataforma (no Minecraft, a primeira é a de Xbox). Depois do download, a extensão confere a versão que o Xbox Store usou: se ela não é de PC e a capa gravada é exatamente a dela, a capa e o fundo saem, o jogo ganha a tag "Sem capa de PC" e uma notificação avisa. Escolha a capa certa em Editar › Baixar metadados. Capa que você escolheu à mão nunca é retirada.
+- **Botão "Corrigir plataforma dos jogos já importados"** em Ajustes, para os jogos que vieram de versões anteriores: mostra a lista antes, passa todos para PC (Windows), apaga capa e fundo só dos que estavam com outra plataforma gravada e deixa os corrigidos selecionados para o Baixar metadados.
+
+---
+
 ## [0.14.0] - 2026-10-10
 
 ### Alterado
